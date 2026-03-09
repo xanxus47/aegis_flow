@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:geolocator/geolocator.dart';
 import '/services/profile_service.dart';
 import '/services/supabase_service.dart';
 import '/models/profile_model.dart';
@@ -35,14 +36,10 @@ class _CheckInScreenState extends State<CheckInScreen> {
   final ProfileService _profileService = ProfileService();
   final SupabaseService _supabaseService = SupabaseService();
 
-  // All centers from API
   List<EvacuationCenter> _allCenters = [];
-
-  // Derived from _allCenters
   List<String> _barangayList = [];
   List<EvacuationCenter> _filteredCenters = [];
 
-  // Selections
   String? _selectedBarangay;
   EvacuationCenter? _selectedCenter;
 
@@ -84,8 +81,6 @@ class _CheckInScreenState extends State<CheckInScreen> {
         setState(() {
           if (res['success']) {
             _allCenters = res['data'] as List<EvacuationCenter>;
-
-            // Build unique sorted barangay list
             final barangays = _allCenters
                 .map((c) => c.barangay)
                 .where((b) => b.isNotEmpty)
@@ -120,6 +115,31 @@ class _CheckInScreenState extends State<CheckInScreen> {
     setState(() => _isTorchOn = !_isTorchOn);
   }
 
+  // ----------------------------------------------------------------
+  // LOCATION HELPER
+  // ----------------------------------------------------------------
+  Future<Position?> _getCurrentLocation() async {
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) return null;
+      }
+      if (permission == LocationPermission.deniedForever) return null;
+
+      return await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 10),
+      );
+    } catch (e) {
+      debugPrint('Location error: $e');
+      return null;
+    }
+  }
+
+  // ----------------------------------------------------------------
+  // SCAN HANDLER
+  // ----------------------------------------------------------------
   void _handleScan(String rawData) async {
     if (_isProcessing || _selectedCenter == null) return;
 
@@ -140,7 +160,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
       if (!profileRes['success']) {
         final msg = profileRes['message']?.toString() ?? "Profile not found";
         if (msg.contains('Session expired')) {
-          if (!mounted) return; // ✅ FIXED: Added mounted check
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
                 content: Text('Session expired. Please log in again.'),
@@ -159,6 +179,9 @@ class _CheckInScreenState extends State<CheckInScreen> {
     }
   }
 
+  // ----------------------------------------------------------------
+  // VULNERABILITY DIALOG
+  // ----------------------------------------------------------------
   void _showVulnerabilityDialog(Profile profile, String id) {
     List<String> selectedOptions = [];
     _isOutsideEc = false;
@@ -177,8 +200,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
                   shrinkWrap: true,
                   children: [
                     Text("Profile:",
-                        style:
-                            TextStyle(color: Colors.grey[600], fontSize: 13)),
+                        style: TextStyle(color: Colors.grey[600], fontSize: 13)),
                     Text(profile.fullName,
                         style: const TextStyle(
                             fontWeight: FontWeight.bold, fontSize: 16)),
@@ -190,9 +212,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
                             : Colors.green.shade50,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                            color: _isOutsideEc
-                                ? Colors.orange
-                                : Colors.green),
+                            color: _isOutsideEc ? Colors.orange : Colors.green),
                       ),
                       child: SwitchListTile(
                         title: Text(
@@ -222,8 +242,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
                     ),
                     const Divider(height: 24),
                     Text("Vulnerabilities:",
-                        style:
-                            TextStyle(color: Colors.grey[600], fontSize: 13)),
+                        style: TextStyle(color: Colors.grey[600], fontSize: 13)),
                     ..._vulnerabilityOptions.map((option) {
                       final isChecked = selectedOptions.contains(option);
                       return CheckboxListTile(
@@ -271,21 +290,52 @@ class _CheckInScreenState extends State<CheckInScreen> {
     );
   }
 
+  // ----------------------------------------------------------------
+  // PHOTO + LOCATION + TIMESTAMP CAPTURE
+  // ----------------------------------------------------------------
   Future<void> _takeProofPhotoAndCheckIn(
       Profile profile, String id, List<String> vulnerabilities) async {
     try {
+      // Capture timestamp BEFORE opening camera
+      final DateTime checkInTimestamp = DateTime.now();
+
+      // Request location BEFORE opening camera (runs in parallel with camera open)
+      final Future<Position?> locationFuture = _getCurrentLocation();
+
+      // Stop the scanner and turn off its torch BEFORE handing the camera
+      // to image_picker. Both compete for the same hardware — if the scanner
+      // torch stays on it holds the camera resource and the native camera
+      // flash won't work.
+      if (_isTorchOn) {
+        await _controller?.toggleTorch();
+      }
+      await _controller?.stop();
+
       final XFile? photo = await _picker.pickImage(
         source: ImageSource.camera,
         imageQuality: 50,
         maxWidth: 800,
       );
 
+      // Scanner will be restarted by _resetScanner() / _processCheckIn flow
       if (photo == null) {
+        // User cancelled — restart scanner and restore torch state
+        await _controller?.start();
+        if (_isTorchOn) await _controller?.toggleTorch();
         _resetScanner();
         return;
       }
 
       setState(() => _isProcessing = true);
+
+      // Await location result (may already be resolved by now)
+      final Position? position = await locationFuture;
+
+      final double? latitude = position?.latitude;
+      final double? longitude = position?.longitude;
+
+      debugPrint('📍 Location: $latitude, $longitude');
+      debugPrint('🕐 Timestamp: $checkInTimestamp');
 
       final File file = File(photo.path);
       final String fileName =
@@ -299,12 +349,24 @@ class _CheckInScreenState extends State<CheckInScreen> {
           .from('checkin-proofs')
           .getPublicUrl(fileName);
 
-      await _processCheckIn(profile, id, proofUrl, vulnerabilities);
+      await _processCheckIn(
+        profile,
+        id,
+        proofUrl,
+        vulnerabilities,
+        latitude: latitude,
+        longitude: longitude,
+        checkInTimestamp: checkInTimestamp,
+      );
     } catch (e) {
-      print("PHOTO ERROR: $e");
+      debugPrint("PHOTO ERROR: $e");
+
+      // Ensure scanner is restarted on any error path
+      await _controller?.start();
+      if (_isTorchOn) await _controller?.toggleTorch();
 
       if (e.toString().contains('JWT') || e.toString().contains('Auth')) {
-        if (!mounted) return; // ✅ FIXED: Added mounted check
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
               content: Text('Session expired. Please log in again.'),
@@ -319,19 +381,28 @@ class _CheckInScreenState extends State<CheckInScreen> {
     }
   }
 
-  Future<void> _processCheckIn(Profile profile, String id, String? proofUrl,
-      List<String> vulnerabilities) async {
+  // ----------------------------------------------------------------
+  // PROCESS CHECK-IN (now receives lat/lng + timestamp)
+  // ----------------------------------------------------------------
+  Future<void> _processCheckIn(
+    Profile profile,
+    String id,
+    String? proofUrl,
+    List<String> vulnerabilities, {
+    double? latitude,
+    double? longitude,
+    DateTime? checkInTimestamp,
+  }) async {
     if (_selectedCenter == null) return;
 
     setState(() => _isProcessing = true);
 
     try {
-      final apiRes =
-          await _profileService.checkInEvacuee(id, _selectedCenter!.id);
+      final apiRes = await _profileService.checkInEvacuee(id, _selectedCenter!.id);
 
       if (apiRes['success'] != true) {
         if (apiRes['message'].toString().contains('Session expired')) {
-          if (!mounted) return; // ✅ FIXED: Added mounted check
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
                 content: Text('Session expired. Please log in again.'),
@@ -363,14 +434,18 @@ class _CheckInScreenState extends State<CheckInScreen> {
         is4Ps: vulnerabilities.contains("4P's Beneficiaries"),
         isLgbt: vulnerabilities.contains('LGBTQIA+'),
         isOutsideEc: _isOutsideEc,
+        // ── NEW FIELDS ──
+        latitude: latitude,
+        longitude: longitude,
+        checkInTimestamp: checkInTimestamp,
       );
 
-      if (mounted) _showSuccessDialog(profile.fullName);
+      if (mounted) _showSuccessDialog(profile.fullName, latitude, longitude, checkInTimestamp);
     } catch (e) {
-      print("CHECK-IN ERROR: $e");
+      debugPrint("CHECK-IN ERROR: $e");
 
       if (e.toString().contains('JWT') || e.toString().contains('Auth')) {
-        if (!mounted) return; // ✅ FIXED: Added mounted check
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
               content: Text('Session expired. Please log in again.'),
@@ -385,7 +460,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
   }
 
   // ----------------------------------------------------------------
-  // SELECT LOCATION SCREEN (Barangay → Center Dropdowns)
+  // SELECT LOCATION SCREEN
   // ----------------------------------------------------------------
   Widget _buildSelectLocationScreen() {
     return Scaffold(
@@ -444,7 +519,6 @@ class _CheckInScreenState extends State<CheckInScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // ── HEADER ──
                       Text(
                         "Where are you scanning?",
                         style: TextStyle(
@@ -456,12 +530,10 @@ class _CheckInScreenState extends State<CheckInScreen> {
                       const SizedBox(height: 6),
                       Text(
                         "Select a barangay first, then choose the evacuation center.",
-                        style:
-                            TextStyle(fontSize: 13, color: Colors.grey[500]),
+                        style: TextStyle(fontSize: 13, color: Colors.grey[500]),
                       ),
                       const SizedBox(height: 32),
 
-                      // ── BARANGAY DROPDOWN ──
                       _buildDropdownLabel("Barangay", Icons.map_outlined),
                       const SizedBox(height: 8),
                       _buildDropdown<String>(
@@ -478,7 +550,6 @@ class _CheckInScreenState extends State<CheckInScreen> {
 
                       const SizedBox(height: 24),
 
-                      // ── EVACUATION CENTER DROPDOWN ──
                       _buildDropdownLabel(
                           "Evacuation Center", Icons.location_on_outlined),
                       const SizedBox(height: 8),
@@ -498,13 +569,11 @@ class _CheckInScreenState extends State<CheckInScreen> {
                             .toList(),
                         onChanged: _filteredCenters.isEmpty
                             ? null
-                            : (val) =>
-                                setState(() => _selectedCenter = val),
+                            : (val) => setState(() => _selectedCenter = val),
                       ),
 
                       const SizedBox(height: 40),
 
-                      // ── CONFIRM BUTTON ──
                       SizedBox(
                         width: double.infinity,
                         height: 54,
@@ -512,7 +581,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
                           onPressed: _selectedCenter == null
                               ? null
                               : () {
-                                  setState(() {}); // triggers scanner screen
+                                  setState(() {});
                                   _resetScanner();
                                 },
                           style: ElevatedButton.styleFrom(
@@ -638,8 +707,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   IconButton(
-                    icon:
-                        const Icon(Icons.arrow_back, color: Colors.white),
+                    icon: const Icon(Icons.arrow_back, color: Colors.white),
                     onPressed: () => setState(() {
                       _selectedCenter = null;
                       _isProcessing = false;
@@ -672,19 +740,13 @@ class _CheckInScreenState extends State<CheckInScreen> {
                           : Colors.white.withOpacity(0.1),
                       shape: BoxShape.circle,
                       border: Border.all(
-                          color: _isTorchOn
-                              ? Colors.amber
-                              : Colors.white24,
+                          color: _isTorchOn ? Colors.amber : Colors.white24,
                           width: 2),
                     ),
                     child: IconButton(
                       icon: Icon(
-                          _isTorchOn
-                              ? Icons.flash_on
-                              : Icons.flash_off,
-                          color: _isTorchOn
-                              ? Colors.amber
-                              : Colors.white),
+                          _isTorchOn ? Icons.flash_on : Icons.flash_off,
+                          color: _isTorchOn ? Colors.amber : Colors.white),
                       onPressed: _toggleFlash,
                     ),
                   ),
@@ -696,8 +758,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
                       _isProcessing = false;
                       _isTorchOn = false;
                     }),
-                    icon: const Icon(Icons.edit,
-                        color: Colors.white, size: 16),
+                    icon: const Icon(Icons.edit, color: Colors.white, size: 16),
                     label: const Text("Change",
                         style: TextStyle(color: Colors.white)),
                     style: TextButton.styleFrom(
@@ -739,7 +800,21 @@ class _CheckInScreenState extends State<CheckInScreen> {
   // ----------------------------------------------------------------
   // DIALOGS
   // ----------------------------------------------------------------
-  void _showSuccessDialog(String name) {
+  void _showSuccessDialog(
+    String name,
+    double? latitude,
+    double? longitude,
+    DateTime? timestamp,
+  ) {
+    final String formattedTime = timestamp != null
+        ? '${timestamp.year}-${timestamp.month.toString().padLeft(2, '0')}-${timestamp.day.toString().padLeft(2, '0')}  '
+          '${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')}:${timestamp.second.toString().padLeft(2, '0')}'
+        : 'N/A';
+
+    final String locationText = (latitude != null && longitude != null)
+        ? '${latitude.toStringAsFixed(6)}, ${longitude.toStringAsFixed(6)}'
+        : 'Location unavailable';
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -749,8 +824,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
         child: Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24)),
+              color: Colors.white, borderRadius: BorderRadius.circular(24)),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -763,8 +837,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
               ),
               const SizedBox(height: 20),
               const Text("Check-In Successful",
-                  style: TextStyle(
-                      fontSize: 20, fontWeight: FontWeight.bold)),
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 12),
               Text(
                 "$name has been verified and checked in to ${_selectedCenter?.name}.",
@@ -772,7 +845,79 @@ class _CheckInScreenState extends State<CheckInScreen> {
                 style: TextStyle(
                     color: Colors.grey[600], fontSize: 15, height: 1.4),
               ),
-              const SizedBox(height: 28),
+              const SizedBox(height: 16),
+
+              // ── TIMESTAMP + LOCATION SUMMARY ──
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: Column(
+                  children: [
+                    // Date & Time row
+                    Row(
+                      children: [
+                        Icon(Icons.access_time_rounded,
+                            size: 16, color: Colors.grey[500]),
+                        const SizedBox(width: 8),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text("Date & Time",
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.grey[500],
+                                    fontWeight: FontWeight.w600)),
+                            Text(formattedTime,
+                                style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    // Location row
+                    Row(
+                      children: [
+                        Icon(
+                          latitude != null
+                              ? Icons.location_on_rounded
+                              : Icons.location_off_rounded,
+                          size: 16,
+                          color: latitude != null
+                              ? Colors.blue[400]
+                              : Colors.grey[400],
+                        ),
+                        const SizedBox(width: 8),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text("Location (Lat, Lng)",
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.grey[500],
+                                    fontWeight: FontWeight.w600)),
+                            Text(locationText,
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: latitude != null
+                                        ? Colors.black87
+                                        : Colors.grey[400])),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -810,8 +955,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
         child: Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24)),
+              color: Colors.white, borderRadius: BorderRadius.circular(24)),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -833,8 +977,8 @@ class _CheckInScreenState extends State<CheckInScreen> {
                 child: SingleChildScrollView(
                   child: Text(msg,
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                          color: Colors.grey[600], fontSize: 14)),
+                      style:
+                          TextStyle(color: Colors.grey[600], fontSize: 14)),
                 ),
               ),
               const SizedBox(height: 24),

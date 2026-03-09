@@ -72,13 +72,23 @@ class SupabaseService {
     required bool is4Ps,
     required bool isLgbt,
 
-    // Location
+    // Location flag
     required bool isOutsideEc,
+
+    // ── NEW: GPS coordinates + explicit timestamp ──
+    double? latitude,
+    double? longitude,
+    DateTime? checkInTimestamp,
   }) async {
     try {
       if (household != null && household.isNotEmpty) {
         await _ensureFamilyExists(household, barangay);
       }
+
+      // Use the provided timestamp (captured before camera opened),
+      // fallback to now if somehow null.
+      final String resolvedCheckInTime =
+          (checkInTimestamp ?? DateTime.now()).toUtc().toIso8601String();
 
       await _supabase.from('evacuee_details').insert({
         'profile_id': profileId,
@@ -86,9 +96,6 @@ class SupabaseService {
         'evacuation_center_id': evacuationCenterId,
         'evacuation_center_name': evacuationCenterName,
         'age': int.tryParse(age ?? '0'),
-
-        // 🔧 FIX: These come from profile_model which now extracts .name
-        // from nested objects, so they'll be clean strings like "Male", "Nicolas"
         'sex': sex,
         'barangay': barangay,
         'household': household,
@@ -108,11 +115,14 @@ class SupabaseService {
         // Location
         'is_outside_ec': isOutsideEc,
 
+        // ── NEW: GPS + timestamp ──
+        'latitude': latitude,
+        'longitude': longitude,
+        'check_in_time': resolvedCheckInTime,
+
         'is_checked_in': true,
-        'check_in_time': DateTime.now().toUtc().toIso8601String(),
       });
 
-      // Update stats: +1 active, +1 total checkins
       await _updateStats(
         centerId: evacuationCenterId,
         centerName: evacuationCenterName,
@@ -121,7 +131,8 @@ class SupabaseService {
         totalCheckinsDelta: 1,
       );
 
-      print('✅ Check-in tracked: $fullName');
+      print('✅ Check-in tracked: $fullName'
+          '${latitude != null ? " | 📍 $latitude, $longitude" : " | 📍 No location"}');
     } catch (e) {
       print("⚠️ Supabase Check-In Error: $e");
       rethrow;
@@ -133,7 +144,6 @@ class SupabaseService {
   // ----------------------------------------------------------------
   Future<void> trackEvacueeCheckOut({required String profileId}) async {
     try {
-      // Get the record first so we know which center to update stats for
       final record = await _supabase
           .from('evacuee_details')
           .select()
@@ -146,7 +156,6 @@ class SupabaseService {
         return;
       }
 
-      // Mark as checked out
       await _supabase
           .from('evacuee_details')
           .update({
@@ -157,7 +166,6 @@ class SupabaseService {
           .eq('profile_id', profileId)
           .eq('is_checked_in', true);
 
-      // Update stats: -1 active, +1 total checkouts
       await _updateStats(
         centerId: record['evacuation_center_id'],
         activeEvacueesDelta: -1,
@@ -172,7 +180,7 @@ class SupabaseService {
   }
 
   // ----------------------------------------------------------------
-  // 5. STATS HELPER (upsert-based, no more negative numbers)
+  // 5. STATS HELPER
   // ----------------------------------------------------------------
   Future<void> _updateStats({
     required String centerId,
@@ -190,7 +198,6 @@ class SupabaseService {
           .maybeSingle();
 
       if (existing == null) {
-        // Create new stats row
         await _supabase.from('evacuation_stats').insert({
           'evacuation_center_id': centerId,
           'center_name': centerName ?? '',
@@ -201,7 +208,6 @@ class SupabaseService {
           'last_updated': DateTime.now().toUtc().toIso8601String(),
         });
       } else {
-        // Update existing — clamp to 0 so it never goes negative
         final newActive =
             ((existing['active_evacuees'] ?? 0) + activeEvacueesDelta)
                 .clamp(0, 99999);
