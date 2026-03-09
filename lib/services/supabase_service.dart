@@ -79,14 +79,15 @@ class SupabaseService {
     double? latitude,
     double? longitude,
     DateTime? checkInTimestamp,
+
+    // ── NEW: host address for outside-EC evacuees ──
+    String? hostAddress,
   }) async {
     try {
       if (household != null && household.isNotEmpty) {
         await _ensureFamilyExists(household, barangay);
       }
 
-      // Use the provided timestamp (captured before camera opened),
-      // fallback to now if somehow null.
       final String resolvedCheckInTime =
           (checkInTimestamp ?? DateTime.now()).toUtc().toIso8601String();
 
@@ -114,8 +115,9 @@ class SupabaseService {
 
         // Location
         'is_outside_ec': isOutsideEc,
+        'host_address': hostAddress,   // null when inside EC
 
-        // ── NEW: GPS + timestamp ──
+        // GPS + timestamp
         'latitude': latitude,
         'longitude': longitude,
         'check_in_time': resolvedCheckInTime,

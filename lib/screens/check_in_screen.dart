@@ -185,6 +185,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
   void _showVulnerabilityDialog(Profile profile, String id) {
     List<String> selectedOptions = [];
     _isOutsideEc = false;
+    final TextEditingController hostAddressController = TextEditingController();
 
     showDialog(
       context: context,
@@ -236,10 +237,87 @@ class _CheckInScreenState extends State<CheckInScreen> {
                         value: _isOutsideEc,
                         activeColor: Colors.deepOrange,
                         onChanged: (val) {
-                          setDialogState(() => _isOutsideEc = val);
+                          setDialogState(() {
+                            _isOutsideEc = val;
+                            // Clear address when toggling back to inside EC
+                            if (!val) hostAddressController.clear();
+                          });
                         },
                       ),
                     ),
+
+                    // ── HOST ADDRESS FIELD (slides in when Outside EC is ON) ──
+                    if (_isOutsideEc) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.orange.shade200),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.home_outlined,
+                                    size: 15, color: Colors.deepOrange[400]),
+                                const SizedBox(width: 6),
+                                Text(
+                                  "Host Address / Location",
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.deepOrange[700],
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  "(required)",
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.deepOrange[300]),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: hostAddressController,
+                              maxLines: 2,
+                              textCapitalization: TextCapitalization.sentences,
+                              decoration: InputDecoration(
+                                hintText:
+                                    "e.g. House of Juan dela Cruz, Purok 3, Nicolas",
+                                hintStyle: TextStyle(
+                                    fontSize: 12, color: Colors.grey[400]),
+                                filled: true,
+                                fillColor: Colors.white,
+                                contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 10),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: BorderSide(
+                                      color: Colors.orange.shade300),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: BorderSide(
+                                      color: Colors.deepOrange, width: 1.5),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: BorderSide(
+                                      color: Colors.orange.shade200),
+                                ),
+                              ),
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+
                     const Divider(height: 24),
                     Text("Vulnerabilities:",
                         style: TextStyle(color: Colors.grey[600], fontSize: 13)),
@@ -267,6 +345,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
               actions: [
                 TextButton(
                   onPressed: () {
+                    hostAddressController.dispose();
                     Navigator.pop(context);
                     _resetScanner();
                   },
@@ -274,8 +353,26 @@ class _CheckInScreenState extends State<CheckInScreen> {
                 ),
                 ElevatedButton(
                   onPressed: () {
+                    // Require host address when outside EC
+                    if (_isOutsideEc &&
+                        hostAddressController.text.trim().isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                              'Please enter the host address for outside-EC evacuee.'),
+                          backgroundColor: Colors.deepOrange,
+                        ),
+                      );
+                      return;
+                    }
+                    final String? hostAddress = _isOutsideEc
+                        ? hostAddressController.text.trim()
+                        : null;
+                    hostAddressController.dispose();
                     Navigator.pop(context);
-                    _takeProofPhotoAndCheckIn(profile, id, selectedOptions);
+                    _takeProofPhotoAndCheckIn(
+                        profile, id, selectedOptions,
+                        hostAddress: hostAddress);
                   },
                   style: ElevatedButton.styleFrom(
                       backgroundColor: _primaryColor),
@@ -294,7 +391,8 @@ class _CheckInScreenState extends State<CheckInScreen> {
   // PHOTO + LOCATION + TIMESTAMP CAPTURE
   // ----------------------------------------------------------------
   Future<void> _takeProofPhotoAndCheckIn(
-      Profile profile, String id, List<String> vulnerabilities) async {
+      Profile profile, String id, List<String> vulnerabilities,
+      {String? hostAddress}) async {
     try {
       // Capture timestamp BEFORE opening camera
       final DateTime checkInTimestamp = DateTime.now();
@@ -357,6 +455,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
         latitude: latitude,
         longitude: longitude,
         checkInTimestamp: checkInTimestamp,
+        hostAddress: hostAddress,
       );
     } catch (e) {
       debugPrint("PHOTO ERROR: $e");
@@ -392,6 +491,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
     double? latitude,
     double? longitude,
     DateTime? checkInTimestamp,
+    String? hostAddress,
   }) async {
     if (_selectedCenter == null) return;
 
@@ -434,13 +534,13 @@ class _CheckInScreenState extends State<CheckInScreen> {
         is4Ps: vulnerabilities.contains("4P's Beneficiaries"),
         isLgbt: vulnerabilities.contains('LGBTQIA+'),
         isOutsideEc: _isOutsideEc,
-        // ── NEW FIELDS ──
         latitude: latitude,
         longitude: longitude,
         checkInTimestamp: checkInTimestamp,
+        hostAddress: hostAddress,
       );
 
-      if (mounted) _showSuccessDialog(profile.fullName, latitude, longitude, checkInTimestamp);
+      if (mounted) _showSuccessDialog(profile.fullName, latitude, longitude, checkInTimestamp, hostAddress: hostAddress);
     } catch (e) {
       debugPrint("CHECK-IN ERROR: $e");
 
@@ -804,8 +904,9 @@ class _CheckInScreenState extends State<CheckInScreen> {
     String name,
     double? latitude,
     double? longitude,
-    DateTime? timestamp,
-  ) {
+    DateTime? timestamp, {
+    String? hostAddress,
+  }) {
     final String formattedTime = timestamp != null
         ? '${timestamp.year}-${timestamp.month.toString().padLeft(2, '0')}-${timestamp.day.toString().padLeft(2, '0')}  '
           '${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')}:${timestamp.second.toString().padLeft(2, '0')}'
@@ -831,13 +932,43 @@ class _CheckInScreenState extends State<CheckInScreen> {
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                    color: Colors.green.shade50, shape: BoxShape.circle),
-                child: const Icon(Icons.check_rounded,
-                    size: 48, color: Colors.green),
+                    color: hostAddress != null
+                        ? Colors.orange.shade50
+                        : Colors.green.shade50,
+                    shape: BoxShape.circle),
+                child: Icon(
+                  hostAddress != null ? Icons.home_outlined : Icons.check_rounded,
+                  size: 48,
+                  color: hostAddress != null ? Colors.deepOrange : Colors.green,
+                ),
               ),
               const SizedBox(height: 20),
               const Text("Check-In Successful",
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              // Outside EC badge
+              if (hostAddress != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade100,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.orange.shade300),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.home_outlined,
+                          size: 13, color: Colors.deepOrange[700]),
+                      const SizedBox(width: 4),
+                      Text("Outside EC — Home-based",
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.deepOrange[700])),
+                    ],
+                  ),
+                ),
               const SizedBox(height: 12),
               Text(
                 "$name has been verified and checked in to ${_selectedCenter?.name}.",
@@ -847,7 +978,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
               ),
               const SizedBox(height: 16),
 
-              // ── TIMESTAMP + LOCATION SUMMARY ──
+              // ── SUMMARY CARD ──
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(14),
@@ -858,61 +989,38 @@ class _CheckInScreenState extends State<CheckInScreen> {
                 ),
                 child: Column(
                   children: [
-                    // Date & Time row
-                    Row(
-                      children: [
-                        Icon(Icons.access_time_rounded,
-                            size: 16, color: Colors.grey[500]),
-                        const SizedBox(width: 8),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text("Date & Time",
-                                style: TextStyle(
-                                    fontSize: 10,
-                                    color: Colors.grey[500],
-                                    fontWeight: FontWeight.w600)),
-                            Text(formattedTime,
-                                style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600)),
-                          ],
-                        ),
-                      ],
+                    // Date & Time
+                    _buildSummaryRow(
+                      icon: Icons.access_time_rounded,
+                      iconColor: Colors.grey[500]!,
+                      label: "Date & Time",
+                      value: formattedTime,
+                      valueColor: Colors.black87,
                     ),
                     const SizedBox(height: 10),
-                    // Location row
-                    Row(
-                      children: [
-                        Icon(
-                          latitude != null
-                              ? Icons.location_on_rounded
-                              : Icons.location_off_rounded,
-                          size: 16,
-                          color: latitude != null
-                              ? Colors.blue[400]
-                              : Colors.grey[400],
-                        ),
-                        const SizedBox(width: 8),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text("Location (Lat, Lng)",
-                                style: TextStyle(
-                                    fontSize: 10,
-                                    color: Colors.grey[500],
-                                    fontWeight: FontWeight.w600)),
-                            Text(locationText,
-                                style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: latitude != null
-                                        ? Colors.black87
-                                        : Colors.grey[400])),
-                          ],
-                        ),
-                      ],
+                    // Location
+                    _buildSummaryRow(
+                      icon: latitude != null
+                          ? Icons.location_on_rounded
+                          : Icons.location_off_rounded,
+                      iconColor:
+                          latitude != null ? Colors.blue[400]! : Colors.grey[400]!,
+                      label: "Location (Lat, Lng)",
+                      value: locationText,
+                      valueColor:
+                          latitude != null ? Colors.black87 : Colors.grey[400]!,
                     ),
+                    // Host address (only when outside EC)
+                    if (hostAddress != null) ...[
+                      const SizedBox(height: 10),
+                      _buildSummaryRow(
+                        icon: Icons.home_outlined,
+                        iconColor: Colors.deepOrange[400]!,
+                        label: "Host Address",
+                        value: hostAddress,
+                        valueColor: Colors.deepOrange[700]!,
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -926,7 +1034,8 @@ class _CheckInScreenState extends State<CheckInScreen> {
                     _resetScanner();
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
+                    backgroundColor:
+                        hostAddress != null ? Colors.deepOrange : Colors.green,
                     foregroundColor: Colors.white,
                     elevation: 0,
                     padding: const EdgeInsets.symmetric(vertical: 16),
@@ -942,6 +1051,39 @@ class _CheckInScreenState extends State<CheckInScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildSummaryRow({
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required String value,
+    required Color valueColor,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: iconColor),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.grey[500],
+                      fontWeight: FontWeight.w600)),
+              Text(value,
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: valueColor)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
