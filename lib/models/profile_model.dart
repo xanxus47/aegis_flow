@@ -216,11 +216,10 @@ class Profile {
   }
 
   String get fullName {
-    final parts = [firstName];
-    if (middleName != null && middleName!.isNotEmpty) parts.add(middleName!);
-    parts.add(lastName);
-    if (suffix != null && suffix!.isNotEmpty) parts.add(suffix!);
-    return parts.join(' ');
+    String name = lastName.isNotEmpty ? '$lastName, $firstName' : firstName;
+    if (middleName != null && middleName!.isNotEmpty) name += ' $middleName';
+    if (suffix != null && suffix!.isNotEmpty) name += ' $suffix';
+    return name.trim().toUpperCase(); // Added toUpperCase() to make it look official!
   }
 
   String get shortName => '$firstName $lastName';
