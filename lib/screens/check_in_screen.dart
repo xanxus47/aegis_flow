@@ -524,6 +524,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
         sex: profile.sex,
         barangay: profile.barangay,
         household: profile.household,
+        headOfFamily: profile.headOfFamily,          // 👈 ADDED THIS LINE
         proofImage: proofUrl,
         isPregnant: vulnerabilities.contains('Pregnant'),
         isLactating: vulnerabilities.contains('Lactating Mother'),

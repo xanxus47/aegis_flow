@@ -42,6 +42,7 @@ class Profile {
   final String? modifiedBy;
   final DateTime? dateAdded;
   final DateTime? dateModified;
+  final String? headOfFamily;
 
   Profile({
     required this.id,
@@ -85,6 +86,7 @@ class Profile {
     this.modifiedBy,
     this.dateAdded,
     this.dateModified,
+    this.headOfFamily,
   });
 
   factory Profile.fromJson(Map<String, dynamic> json) {
@@ -102,12 +104,10 @@ class Profile {
       return null;
     }
 
-    // 🔧 FIX: Better nested object extraction for IDs
     String? _getString(String key) {
       final value = _getValue(key);
       if (value == null) return null;
       if (value is Map) {
-        // Look for 'name' first, but if it's an ID object, look for 'id'
         return (value['name'] ?? value['id'] ?? value['description'])?.toString();
       }
       return value.toString();
@@ -146,6 +146,22 @@ class Profile {
       return null;
     }
 
+    // ----------------------------------------------------------------
+    // PARSE HEAD OF FAMILY
+    // ----------------------------------------------------------------
+    String? parsedHead;
+    final rawFamily = json['family'];
+    if (rawFamily is Map && rawFamily['headOfTheFamily'] is Map) {
+      final hof = rawFamily['headOfTheFamily'];
+      final last = hof['lastName']?.toString().trim() ?? '';
+      final first = hof['firstName']?.toString().trim() ?? '';
+      final mid = hof['middleName']?.toString().trim() ?? '';
+
+      String name = last.isNotEmpty ? '$last, $first' : first;
+      if (mid.isNotEmpty) name += ' $mid';
+      if (name.trim().isNotEmpty) parsedHead = name.trim();
+    }
+
     return Profile(
       id: _getString('id') ?? '',
       firstName: _getString('firstName') ?? _getString('first_name') ?? 'Unknown',
@@ -159,11 +175,8 @@ class Profile {
       barangay: _getString('barangay'),
       sitio: _getString('sitio'),
       purok: _getString('purok'),
-      
-      // 🔧 FIX: Check multiple common variations of household and family keys
       household: _getString('household') ?? _getString('householdId') ?? _getString('household_id'),
       family: _getString('family') ?? _getString('familyId') ?? _getString('family_id'),
-      
       isHouseholdHead: _getBool('isHouseholdHead') ?? _getBool('is_household_head'),
       isFamilyHead: _getBool('isFamilyHead') ?? _getBool('is_family_head'),
       hasFamily: _getBool('hasFamily') ?? _getBool('has_family'),
@@ -191,6 +204,7 @@ class Profile {
       modifiedBy: _getString('modifiedBy') ?? _getString('modified_by'),
       dateAdded: _getDateTime('dateAdded') ?? _getDateTime('date_added'),
       dateModified: _getDateTime('dateModified') ?? _getDateTime('date_modified'),
+      headOfFamily: parsedHead,
     );
   }
 
@@ -254,6 +268,7 @@ class Profile {
       'modifiedBy': modifiedBy,
       'dateAdded': dateAdded?.toIso8601String(),
       'dateModified': dateModified?.toIso8601String(),
+      'headOfFamily': headOfFamily,
     };
   }
 
