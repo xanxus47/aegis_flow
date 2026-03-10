@@ -55,6 +55,7 @@ class SupabaseService {
     required String fullName,
     required String evacuationCenterId,
     required String evacuationCenterName,
+    required String centerBarangay,   // ← barangay of the evacuation center
     String? age,
     String? sex,
     String? barangay,
@@ -96,9 +97,10 @@ class SupabaseService {
         'full_name': fullName,
         'evacuation_center_id': evacuationCenterId,
         'evacuation_center_name': evacuationCenterName,
+        'center_barangay': centerBarangay,   // ← center's barangay for dashboard grouping
         'age': int.tryParse(age ?? '0'),
         'sex': sex,
-        'barangay': barangay,
+        'barangay': barangay,               // ← evacuee's home barangay (kept for reference)
         'household': household,
         'proof_image': proofImage,
 

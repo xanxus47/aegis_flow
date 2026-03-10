@@ -519,6 +519,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
         fullName: profile.fullName,
         evacuationCenterId: _selectedCenter!.id,
         evacuationCenterName: _selectedCenter!.name,
+        centerBarangay: _selectedCenter!.barangay,   // ← center's barangay
         age: profile.age?.toString(),
         sex: profile.sex,
         barangay: profile.barangay,
