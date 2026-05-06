@@ -9,10 +9,6 @@ class ProfileService {
   static const String baseUrl = 'https://citrusapi-dev-svex.onrender.com/api/v1';
   final AuthService _authService = AuthService();
 
-  // 4P's HOUSEHOLD TRACKING (STATIC)
-  static Set<String> _fourPsHouseholds = {};
-  static bool _fourPsLoaded = false;
-
   // ----------------------------------------------------------------
   // 1. HELPER: Extract ID
   // ----------------------------------------------------------------
@@ -365,50 +361,4 @@ class ProfileService {
     }
   }
 
-  // ----------------------------------------------------------------
-  // 8. LOAD 4P's HOUSEHOLDS
-  // ----------------------------------------------------------------
-  Future<void> load4PsHouseholds() async {
-    if (_fourPsLoaded) {
-      print(
-          '✅ 4Ps already loaded (${_fourPsHouseholds.length} total)');
-      return;
-    }
-
-    try {
-      print('🔄 Loading 4Ps households from API...');
-
-      final response =
-          await _authenticatedRequest('GET', '/profile?is4P=true');
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final List profiles = data['result'] ?? [];
-
-        _fourPsHouseholds.clear();
-
-        for (var profile in profiles) {
-          final household = profile['household'];
-          if (household != null && household.toString().isNotEmpty) {
-            _fourPsHouseholds.add(household.toString());
-          }
-        }
-
-        _fourPsLoaded = true;
-        print('✅ Loaded ${_fourPsHouseholds.length} 4Ps households');
-      } else {
-        print('⚠️ Failed to load 4Ps: ${response.statusCode}');
-      }
-    } catch (e) {
-      print('❌ Error loading 4Ps: $e');
-    }
-  }
-
-  bool isHousehold4Ps(String? householdId) {
-    if (householdId == null || householdId.isEmpty) return false;
-    return _fourPsHouseholds.contains(householdId);
-  }
-
-  int get fourPsHouseholdCount => _fourPsHouseholds.length;
-  bool get fourPsDataLoaded => _fourPsLoaded;
 }

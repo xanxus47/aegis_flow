@@ -22,10 +22,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   bool _obscurePassword = true;
 
-  // Modernized Color Palette
-  final Color _primaryColor = const Color(0xFF3B82F6); // Vibrant Blue
-  final Color _accentColor = const Color(0xFF1D4ED8); // Deep Blue
-  final Color _surfaceColor = Colors.white;
+  final Color _primaryColor = const Color(0xFF3B82F6);
 
   @override
   void initState() {
@@ -82,226 +79,134 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Stack(
-        children: [
-          // 1. Modern Gradient Background
-          Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFF0F172A), // Slate 900 (Dark)
-                  Color(0xFF1E3A8A), // Blue 900 (Deep Blue)
-                ],
-              ),
-            ),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFFE0E7FF), // Indigo 100
+              Color(0xFFF0F9FF), // Sky 50
+              Color(0xFFF5F3FF), // Violet 50
+            ],
           ),
-          
-          // 2. Decorative glowing orbs in background
-          Positioned(
-            top: -150,
-            right: -50,
-            child: Container(
-              width: 400,
-              height: 400,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: _primaryColor.withOpacity(0.15),
-                // Blur effect for the orb
-                boxShadow: [
-                  BoxShadow(
-                    color: _primaryColor.withOpacity(0.2),
-                    blurRadius: 100,
-                    spreadRadius: 50,
-                  )
-                ],
-              ),
-            ),
-          ),
+        ),
+        child: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 32.0),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 400),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Logo
+                  Image.asset(
+                    'assets/vitality.png',
+                    width: 80,
+                    height: 80,
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Refugeex',
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1E293B),
+                      letterSpacing: 2,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Welcome Back',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey.shade500,
+                      fontWeight: FontWeight.w400,
+                      letterSpacing: 1,
+                    ),
+                  ),
 
-          // Main Content
-          SafeArea(
-            child: Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 24.0),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 420),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // Header Section (Now white text against dark background)
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.1),
-                          shape: BoxShape.circle,
+                  const SizedBox(height: 48),
+
+                  // Form
+                  Form(
+                    key: _formKey,
+                    child: Column(
+                      children: [
+                        _buildInputField(
+                          controller: _usernameController,
+                          label: 'Username',
+                          icon: Icons.person_outline_rounded,
+                          validator: (v) => v?.isEmpty ?? true ? 'Required' : null,
                         ),
-                        child: const Icon(
-                          Icons.security_rounded, // Slightly more modern shield icon
-                          size: 56,
-                          color: Colors.white,
+                        const SizedBox(height: 16),
+                        _buildInputField(
+                          controller: _passwordController,
+                          label: 'Password',
+                          icon: Icons.lock_outline_rounded,
+                          isPassword: true,
+                          obscureText: _obscurePassword,
+                          onTogglePassword: () => setState(() => _obscurePassword = !_obscurePassword),
+                          validator: (v) => v?.isEmpty ?? true ? 'Required' : null,
                         ),
-                      ),
-                      const SizedBox(height: 24),
-                      const Text(
-                        'MDRRMO',
-                        style: TextStyle(
-                          fontSize: 36,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          letterSpacing: 1.5,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Evacuee Management System',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.blue.shade200,
-                          fontWeight: FontWeight.w500,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                      
-                      const SizedBox(height: 48),
-                      
-                      // 3. Modern Floating Login Card
-                      Container(
-                        padding: const EdgeInsets.all(32),
-                        decoration: BoxDecoration(
-                          color: _surfaceColor,
-                          borderRadius: BorderRadius.circular(32), // More rounded
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.2),
-                              blurRadius: 40,
-                              offset: const Offset(0, 10),
+                        const SizedBox(height: 32),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: ElevatedButton(
+                            onPressed: _isLoading ? null : _login,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _primaryColor,
+                              foregroundColor: Colors.white,
+                              disabledBackgroundColor: _primaryColor.withOpacity(0.5),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                             ),
-                          ],
-                        ),
-                        child: Form(
-                          key: _formKey,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Welcome Back',
-                                style: TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.blueGrey.shade900,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Sign in to access the dashboard',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.blueGrey.shade400,
-                                ),
-                              ),
-                              const SizedBox(height: 32),
-                              
-                              // Username Input
-                              _buildInputField(
-                                controller: _usernameController,
-                                label: 'Username',
-                                icon: Icons.person_outline_rounded,
-                                validator: (v) => v?.isEmpty ?? true ? 'Required' : null,
-                              ),
-                              
-                              const SizedBox(height: 20),
-                              
-                              // Password Input
-                              _buildInputField(
-                                controller: _passwordController,
-                                label: 'Password',
-                                icon: Icons.lock_outline_rounded,
-                                isPassword: true,
-                                obscureText: _obscurePassword,
-                                onTogglePassword: () => setState(() => _obscurePassword = !_obscurePassword),
-                                validator: (v) => v?.isEmpty ?? true ? 'Required' : null,
-                              ),
-                              
-                              const SizedBox(height: 40),
-                              
-                              // 4. Modern Gradient Button
-                              Container(
-                                width: double.infinity,
-                                height: 56,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(16),
-                                  gradient: LinearGradient(
-                                    colors: [_primaryColor, _accentColor],
-                                    begin: Alignment.centerLeft,
-                                    end: Alignment.centerRight,
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: _primaryColor.withOpacity(0.3),
-                                      blurRadius: 12,
-                                      offset: const Offset(0, 6),
+                            child: _isLoading
+                                ? const SizedBox(
+                                    height: 22,
+                                    width: 22,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
                                     ),
-                                  ],
-                                ),
-                                child: ElevatedButton(
-                                  onPressed: _isLoading ? null : _login,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.transparent,
-                                    shadowColor: Colors.transparent,
-                                    foregroundColor: Colors.white,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(16),
+                                  )
+                                : const Text(
+                                    'Sign In',
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: 0.5,
                                     ),
                                   ),
-                                  child: _isLoading
-                                      ? const SizedBox(
-                                          height: 24,
-                                          width: 24,
-                                          child: CircularProgressIndicator(
-                                            color: Colors.white,
-                                            strokeWidth: 2.5,
-                                          ),
-                                        )
-                                      : const Text(
-                                          'Access System',
-                                          style: TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                            letterSpacing: 0.5,
-                                          ),
-                                        ),
-                                ),
-                              ),
-                            ],
                           ),
                         ),
-                      ),
-                      
-                      const SizedBox(height: 32),
-                      
-                      // Footer
-                      Text(
-                        '© 2024 MDRRMO • Authorized Personnel Only',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.white.withOpacity(0.5),
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
+
+                  const SizedBox(height: 48),
+
+                  Text(
+                    '© 2024 MDRRMO • Authorized Personnel Only',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey.shade400,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
-        ],
+        ),
+        ),
       ),
     );
   }
 
-  // 5. Modernized Input Fields
   Widget _buildInputField({
     required TextEditingController controller,
     required String label,
@@ -316,43 +221,44 @@ class _LoginScreenState extends State<LoginScreen> {
       obscureText: obscureText,
       style: TextStyle(
         fontWeight: FontWeight.w500,
-        color: Colors.blueGrey.shade800,
+        color: Colors.grey.shade800,
+        fontSize: 15,
       ),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: TextStyle(color: Colors.blueGrey.shade400, fontSize: 14),
+        labelStyle: TextStyle(color: Colors.grey.shade500, fontSize: 13),
         hintText: isPassword ? '••••••' : null,
-        hintStyle: TextStyle(color: Colors.blueGrey.shade300),
-        prefixIcon: Icon(icon, color: _primaryColor.withOpacity(0.7), size: 22),
+        hintStyle: TextStyle(color: Colors.grey.shade300),
+        prefixIcon: Icon(icon, color: Colors.grey.shade400, size: 20),
         suffixIcon: isPassword
             ? IconButton(
                 icon: Icon(
                   obscureText ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                  color: Colors.blueGrey.shade400,
+                  color: Colors.grey.shade400,
                   size: 20,
                 ),
                 onPressed: onTogglePassword,
               )
             : null,
         filled: true,
-        fillColor: Colors.blueGrey.shade50.withOpacity(0.5), // Softer fill color
+        fillColor: Colors.white,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide.none,
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey.shade200, width: 1),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: Colors.blueGrey.shade100, width: 1), // Subtle border
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey.shade200, width: 1),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: _primaryColor, width: 2), // Strong focus border
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: _primaryColor, width: 1.5),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: Colors.redAccent, width: 1),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       ),
       validator: validator,
     );

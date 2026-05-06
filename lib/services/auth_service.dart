@@ -18,25 +18,30 @@ class AuthService {
     try {
       final uri = Uri.parse('$baseUrl/auth/login');
 
+      final bodyJson = jsonEncode({
+        'UserName': username,
+        'Password': password,
+      });
+      print('📤 Request body: $bodyJson');
+
       final response = await http.post(
         uri,
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
-        body: jsonEncode({
-          'UserName': username,
-          'Password': password,
-        }),
+        body: bodyJson,
       ).timeout(const Duration(seconds: 60));
 
       print('📡 Status Code: ${response.statusCode}');
+      print('📥 Response body: ${response.body}');
 
       if (response.body.isEmpty) throw Exception('Server returned empty response');
 
       final body = jsonDecode(response.body);
 
-      if (response.statusCode == 200 && body['isSuccess'] == true) {
+      final isSuccess = body['isSuccess'] == true || body['success'] == true;
+      if (response.statusCode == 200 && isSuccess) {
         print('🎉 LOGIN SUCCESSFUL - Status 200');
         print('═══════════════════════════════════════');
 
@@ -66,9 +71,9 @@ class AuthService {
         return;
       }
 
-      final message = body['message'] ?? 'Login failed';
+      final message = body['message'] ?? body['error'] ?? 'Login failed';
       switch (response.statusCode) {
-        case 400: throw Exception('Bad request - invalid parameters');
+        case 400: throw Exception('$message');
         case 401: throw Exception('Invalid username or password');
         case 403: throw Exception('Access forbidden');
         case 404: throw Exception('Login endpoint not found (404)');
