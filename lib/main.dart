@@ -38,7 +38,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'MDRRMO Evacuee Scanner',
+      title: 'Refugeex',
       theme: ThemeData(
         // Modern Theme Configuration
         primarySwatch: Colors.blue,

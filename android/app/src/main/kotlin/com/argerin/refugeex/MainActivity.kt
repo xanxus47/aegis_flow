@@ -1,4 +1,4 @@
-package com.example.aegis_flow
+package com.argerin.refugeex
 
 import io.flutter.embedding.android.FlutterActivity
 
