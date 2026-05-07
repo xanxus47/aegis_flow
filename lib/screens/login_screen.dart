@@ -80,128 +80,141 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFFE0E7FF), // Indigo 100
-              Color(0xFFF0F9FF), // Sky 50
-              Color(0xFFF5F3FF), // Violet 50
-            ],
-          ),
-        ),
+        color: Colors.white,
         child: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 32.0),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 400),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Logo
-                  Image.asset(
-                    'assets/vitality.png',
-                    width: 80,
-                    height: 80,
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Refugeex',
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF1E293B),
-                      letterSpacing: 2,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: Align(
+                  alignment: const Alignment(1.0, 0.3),
+                  child: IgnorePointer(
+                    child: Opacity(
+                      opacity: 0.10,
+                      child: Transform(
+                        alignment: Alignment.centerRight,
+                        transform: Matrix4.diagonal3Values(1.0, 1.25, 1.0),
+                        child: Image.asset(
+                          'assets/vitality.png',
+                          height: 360,
+                          fit: BoxFit.contain,
+                        ),
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Welcome Back',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey.shade500,
-                      fontWeight: FontWeight.w400,
-                      letterSpacing: 1,
-                    ),
-                  ),
-
-                  const SizedBox(height: 48),
-
-                  // Form
-                  Form(
-                    key: _formKey,
+                ),
+              ),
+              Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 400),
                     child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        _buildInputField(
-                          controller: _usernameController,
-                          label: 'Username',
-                          icon: Icons.person_outline_rounded,
-                          validator: (v) => v?.isEmpty ?? true ? 'Required' : null,
+                        // Logo
+                        Image.asset(
+                          'assets/vitality.png',
+                          width: 80,
+                          height: 80,
                         ),
                         const SizedBox(height: 16),
-                        _buildInputField(
-                          controller: _passwordController,
-                          label: 'Password',
-                          icon: Icons.lock_outline_rounded,
-                          isPassword: true,
-                          obscureText: _obscurePassword,
-                          onTogglePassword: () => setState(() => _obscurePassword = !_obscurePassword),
-                          validator: (v) => v?.isEmpty ?? true ? 'Required' : null,
+                        const Text(
+                          'Refugeex',
+                          style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF1E293B),
+                            letterSpacing: 2,
+                          ),
                         ),
-                        const SizedBox(height: 32),
-                        SizedBox(
-                          width: double.infinity,
-                          height: 52,
-                          child: ElevatedButton(
-                            onPressed: _isLoading ? null : _login,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: _primaryColor,
-                              foregroundColor: Colors.white,
-                              disabledBackgroundColor: _primaryColor.withOpacity(0.5),
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Welcome Back',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey.shade500,
+                            fontWeight: FontWeight.w400,
+                            letterSpacing: 1,
+                          ),
+                        ),
+
+                        const SizedBox(height: 48),
+
+                        // Form
+                        Form(
+                          key: _formKey,
+                          child: Column(
+                            children: [
+                              _buildInputField(
+                                controller: _usernameController,
+                                label: 'Username',
+                                icon: Icons.person_outline_rounded,
+                                validator: (v) => v?.isEmpty ?? true ? 'Required' : null,
                               ),
-                            ),
-                            child: _isLoading
-                                ? const SizedBox(
-                                    height: 22,
-                                    width: 22,
-                                    child: CircularProgressIndicator(
-                                      color: Colors.white,
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Text(
-                                    'Sign In',
-                                    style: TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w600,
-                                      letterSpacing: 0.5,
+                              const SizedBox(height: 16),
+                              _buildInputField(
+                                controller: _passwordController,
+                                label: 'Password',
+                                icon: Icons.lock_outline_rounded,
+                                isPassword: true,
+                                obscureText: _obscurePassword,
+                                onTogglePassword: () => setState(() => _obscurePassword = !_obscurePassword),
+                                validator: (v) => v?.isEmpty ?? true ? 'Required' : null,
+                              ),
+                              const SizedBox(height: 32),
+                              SizedBox(
+                                width: double.infinity,
+                                height: 52,
+                                child: ElevatedButton(
+                                  onPressed: _isLoading ? null : _login,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: _primaryColor,
+                                    foregroundColor: Colors.white,
+                                    disabledBackgroundColor: _primaryColor.withOpacity(0.5),
+                                    elevation: 0,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
                                     ),
                                   ),
+                                  child: _isLoading
+                                      ? const SizedBox(
+                                          height: 22,
+                                          width: 22,
+                                          child: CircularProgressIndicator(
+                                            color: Colors.white,
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : const Text(
+                                          'Sign In',
+                                          style: TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w600,
+                                            letterSpacing: 0.5,
+                                          ),
+                                        ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 48),
+
+                        Text(
+                          ' 2024 MDRRMO • Authorized Personnel Only',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey.shade400,
                           ),
                         ),
                       ],
                     ),
                   ),
-
-                  const SizedBox(height: 48),
-
-                  Text(
-                    '© 2024 MDRRMO • Authorized Personnel Only',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.grey.shade400,
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
+            ],
           ),
-        ),
         ),
       ),
     );
