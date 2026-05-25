@@ -1,10 +1,12 @@
 // lib/screens/check_out_screen.dart
 import 'dart:async';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '/services/profile_service.dart';
 import '/services/supabase_service.dart';
+import '../refugeex_offline/offline_store.dart';
 
 class CheckOutScreen extends StatefulWidget {
   final String? userName;
@@ -23,6 +25,8 @@ class _CheckOutScreenState extends State<CheckOutScreen> {
   final ProfileService _profileService = ProfileService();
   final SupabaseService _supabaseService = SupabaseService();
   final Map<String, DateTime> _scanCooldowns = {};
+  final OfflineStore _offlineStore = OfflineStore.instance;
+  final Connectivity _connectivity = Connectivity();
 
   final Color _primaryColor = const Color(0xFF2563EB);
   final Color _overlayColor = const Color(0x99000000);
@@ -54,20 +58,13 @@ class _CheckOutScreenState extends State<CheckOutScreen> {
       final id = _profileService.extractProfileId(rawData);
       if (id == null) throw "Invalid QR Code";
 
-      final List<dynamic> checkInRecord = await Supabase.instance.client
-          .from('evacuee_details')
-          .select()
-          .eq('profile_id', id)
-          .eq('is_checked_in', true)
-          .limit(1);
-
-      if (checkInRecord.isEmpty) {
-        throw "This person is NOT checked in (Database Record Not Found).";
+      final record = await _getActiveCheckInRecord(id);
+      if (record == null) {
+        throw "This person is NOT checked in (No record found).";
       }
 
-      final String fullName = checkInRecord[0]['full_name'] ?? "Unknown";
-      final String centerId =
-          checkInRecord[0]['evacuation_center_id']?.toString() ?? "";
+      final String fullName = record['fullName']?.toString() ?? "Unknown";
+      final String centerId = record['centerId']?.toString() ?? '';
 
       if (centerId.isEmpty) {
         throw "Could not determine which evacuation center this person is in.";
@@ -91,11 +88,54 @@ class _CheckOutScreenState extends State<CheckOutScreen> {
     }
   }
 
+  Future<Map<String, dynamic>?> _getActiveCheckInRecord(String profileId) async {
+    final hasNetwork =
+        (await _connectivity.checkConnectivity()) != ConnectivityResult.none;
+    if (hasNetwork) {
+      try {
+        final List<dynamic> checkInRecord = await Supabase.instance.client
+            .from('evacuee_details')
+            .select()
+            .eq('profile_id', profileId)
+            .eq('is_checked_in', true)
+            .limit(1);
+
+        if (checkInRecord.isNotEmpty) {
+          final record = Map<String, dynamic>.from(checkInRecord.first);
+          await _offlineStore.upsertActiveCheckIn({
+            'profileId': profileId,
+            'fullName': record['full_name'] ?? 'Unknown',
+            'centerId': record['evacuation_center_id']?.toString(),
+            'centerName': record['evacuation_center_name']?.toString(),
+            'centerBarangay': record['center_barangay']?.toString(),
+            'timestamp': DateTime.now().toIso8601String(),
+            'synced': true,
+          });
+          return {
+            'fullName': record['full_name'],
+            'centerId': record['evacuation_center_id'],
+          };
+        }
+      } catch (e) {
+        debugPrint('Live lookup failed, falling back to cache: $e');
+      }
+    }
+
+    return _offlineStore.getActiveCheckIn(profileId);
+  }
+
   Future<void> _processCheckOut(
       String fullName, String id, String centerId) async {
     setState(() => _isProcessing = true);
 
     try {
+      final hasNetwork =
+          (await _connectivity.checkConnectivity()) != ConnectivityResult.none;
+      if (!hasNetwork) {
+        await _queueCheckOut(fullName, id, centerId);
+        return;
+      }
+
       // 1. Call Lester's API
       final apiRes = await _profileService.checkOutEvacuee(id, centerId);
 
@@ -114,6 +154,7 @@ class _CheckOutScreenState extends State<CheckOutScreen> {
 
       // 2. Sync with Supabase
       await _supabaseService.trackEvacueeCheckOut(profileId: id);
+      await _offlineStore.removeActiveCheckIn(id);
 
       if (mounted) _showSuccessDialog(fullName);
     } catch (e) {
@@ -128,10 +169,35 @@ class _CheckOutScreenState extends State<CheckOutScreen> {
         return;
       }
 
+      final message = e.toString().toLowerCase();
+      final isNetworkIssue = message.contains('network') || message.contains('socket');
+      if (isNetworkIssue) {
+        await _queueCheckOut(fullName, id, centerId);
+        return;
+      }
+
       if (mounted) {
         _showErrorDialog("Check-Out Failed",
             e.toString().replaceAll("Exception: ", ""));
       }
+    }
+  }
+
+  Future<void> _queueCheckOut(String name, String profileId, String centerId) async {
+    await _offlineStore.enqueueCheckOut({
+      'profileId': profileId,
+      'fullName': name,
+      'centerId': centerId,
+    });
+    await _offlineStore.removeActiveCheckIn(profileId);
+    if (mounted) {
+      _showSuccessDialog(name);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Offline — check-out queued for sync'),
+          backgroundColor: Colors.orange,
+        ),
+      );
     }
   }
 

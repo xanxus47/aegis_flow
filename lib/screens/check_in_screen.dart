@@ -1,6 +1,7 @@
 // lib/screens/check_in_screen.dart
 import 'dart:async';
 import 'dart:io';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:image_picker/image_picker.dart';
@@ -10,6 +11,7 @@ import '/services/profile_service.dart';
 import '/services/supabase_service.dart';
 import '/models/profile_model.dart';
 import '/models/evacuation_center_model.dart';
+import '../refugeex_offline/offline_store.dart';
 
 class CheckInScreen extends StatefulWidget {
   final String? userName;
@@ -31,10 +33,13 @@ class _CheckInScreenState extends State<CheckInScreen> {
   bool _isLoadingCenters = true;
   bool _isTorchOn = false;
   bool _isOutsideEc = false;
+  bool _isOfflineMode = false;
 
   final ImagePicker _picker = ImagePicker();
   final ProfileService _profileService = ProfileService();
   final SupabaseService _supabaseService = SupabaseService();
+  final OfflineStore _offlineStore = OfflineStore.instance;
+  final Connectivity _connectivity = Connectivity();
 
   List<EvacuationCenter> _allCenters = [];
   List<String> _barangayList = [];
@@ -77,23 +82,37 @@ class _CheckInScreenState extends State<CheckInScreen> {
 
     try {
       final res = await _profileService.getEvacuationCenters();
-      if (mounted) {
+      if (!mounted) return;
+
+      if (res['success'] == true) {
+        final centers = (res['data'] as List).cast<EvacuationCenter>();
         setState(() {
-          if (res['success']) {
-            _allCenters = res['data'] as List<EvacuationCenter>;
-            final barangays = _allCenters
-                .map((c) => c.barangay)
-                .where((b) => b.isNotEmpty)
-                .toSet()
-                .toList()
-              ..sort();
-            _barangayList = barangays;
-          }
+          _allCenters = centers;
+          _barangayList = _extractBarangays(centers);
+          _filteredCenters = _selectedBarangay == null
+              ? []
+              : _allCenters
+                  .where((c) => c.barangay == _selectedBarangay)
+                  .toList();
+          _isOfflineMode = res['fromCache'] == true;
           _isLoadingCenters = false;
         });
+
+        if (_isOfflineMode) {
+          _showOfflineSnackbar('Offline mode: showing cached centers');
+        }
+      } else {
+        if (!_applyCachedCenters()) {
+          setState(() => _isLoadingCenters = false);
+          _showErrorDialog(
+            "Connection Error",
+            res['message']?.toString() ?? "Failed to load centers.",
+          );
+        }
       }
     } catch (e) {
-      if (mounted) {
+      if (!_applyCachedCenters()) {
+        if (!mounted) return;
         setState(() => _isLoadingCenters = false);
         _showErrorDialog("Connection Error", "Could not connect to server.\n$e");
       }
@@ -113,6 +132,48 @@ class _CheckInScreenState extends State<CheckInScreen> {
   void _toggleFlash() {
     _controller?.toggleTorch();
     setState(() => _isTorchOn = !_isTorchOn);
+  }
+
+  Future<bool> _hasNetwork() async {
+    final result = await _connectivity.checkConnectivity();
+    return result != ConnectivityResult.none;
+  }
+
+  List<String> _extractBarangays(List<EvacuationCenter> centers) {
+    final set = centers
+        .map((c) => c.barangay)
+        .where((b) => b.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+    return set;
+  }
+
+  bool _applyCachedCenters() {
+    final cached = _offlineStore.getCachedCenters();
+    if (cached.isEmpty) return false;
+    if (!mounted) return true;
+    setState(() {
+      _allCenters = cached;
+      _barangayList = _extractBarangays(cached);
+      _filteredCenters = _selectedBarangay == null
+          ? []
+          : cached.where((c) => c.barangay == _selectedBarangay).toList();
+      _isOfflineMode = true;
+      _isLoadingCenters = false;
+    });
+    _showOfflineSnackbar('Offline mode: showing cached centers');
+    return true;
+  }
+
+  void _showOfflineSnackbar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.orange.shade600,
+      ),
+    );
   }
 
   // ----------------------------------------------------------------
@@ -394,16 +455,10 @@ class _CheckInScreenState extends State<CheckInScreen> {
       Profile profile, String id, List<String> vulnerabilities,
       {String? hostAddress}) async {
     try {
-      // Capture timestamp BEFORE opening camera
       final DateTime checkInTimestamp = DateTime.now();
-
-      // Request location BEFORE opening camera (runs in parallel with camera open)
       final Future<Position?> locationFuture = _getCurrentLocation();
+      final bool initialNetwork = await _hasNetwork();
 
-      // Stop the scanner and turn off its torch BEFORE handing the camera
-      // to image_picker. Both compete for the same hardware — if the scanner
-      // torch stays on it holds the camera resource and the native camera
-      // flash won't work.
       if (_isTorchOn) {
         await _controller?.toggleTorch();
       }
@@ -415,9 +470,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
         maxWidth: 800,
       );
 
-      // Scanner will be restarted by _resetScanner() / _processCheckIn flow
       if (photo == null) {
-        // User cancelled — restart scanner and restore torch state
         await _controller?.start();
         if (_isTorchOn) await _controller?.toggleTorch();
         _resetScanner();
@@ -426,26 +479,29 @@ class _CheckInScreenState extends State<CheckInScreen> {
 
       setState(() => _isProcessing = true);
 
-      // Await location result (may already be resolved by now)
       final Position? position = await locationFuture;
-
       final double? latitude = position?.latitude;
       final double? longitude = position?.longitude;
-
-      debugPrint('📍 Location: $latitude, $longitude');
-      debugPrint('🕐 Timestamp: $checkInTimestamp');
 
       final File file = File(photo.path);
       final String fileName =
           'proof_${id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
 
-      await Supabase.instance.client.storage
-          .from('checkin-proofs')
-          .upload(fileName, file);
+      String? proofUrl;
+      String? proofPath;
 
-      final String proofUrl = Supabase.instance.client.storage
-          .from('checkin-proofs')
-          .getPublicUrl(fileName);
+      if (initialNetwork) {
+        try {
+          final storage = Supabase.instance.client.storage.from('checkin-proofs');
+          await storage.upload(fileName, file);
+          proofUrl = storage.getPublicUrl(fileName);
+        } catch (uploadError) {
+          debugPrint('Proof upload failed, saving offline: $uploadError');
+          proofPath = file.path;
+        }
+      } else {
+        proofPath = file.path;
+      }
 
       await _processCheckIn(
         profile,
@@ -456,11 +512,11 @@ class _CheckInScreenState extends State<CheckInScreen> {
         longitude: longitude,
         checkInTimestamp: checkInTimestamp,
         hostAddress: hostAddress,
+        proofPath: proofPath,
+        proofFileName: fileName,
       );
     } catch (e) {
       debugPrint("PHOTO ERROR: $e");
-
-      // Ensure scanner is restarted on any error path
       await _controller?.start();
       if (_isTorchOn) await _controller?.toggleTorch();
 
@@ -475,8 +531,9 @@ class _CheckInScreenState extends State<CheckInScreen> {
         return;
       }
 
-      if (mounted)
-        _showErrorDialog("Photo Error", "Failed to upload proof: $e");
+      if (mounted) {
+        _showErrorDialog("Photo Error", "Failed to capture proof: $e");
+      }
     }
   }
 
@@ -492,12 +549,31 @@ class _CheckInScreenState extends State<CheckInScreen> {
     double? longitude,
     DateTime? checkInTimestamp,
     String? hostAddress,
+    String? proofPath,
+    String? proofFileName,
   }) async {
     if (_selectedCenter == null) return;
 
     setState(() => _isProcessing = true);
 
     try {
+      final hasNetwork = await _hasNetwork();
+      if (!hasNetwork) {
+        await _queueCheckIn(
+          profile: profile,
+          profileId: id,
+          vulnerabilities: vulnerabilities,
+          proofUrl: proofUrl,
+          proofPath: proofPath,
+          proofFileName: proofFileName,
+          latitude: latitude,
+          longitude: longitude,
+          timestamp: checkInTimestamp,
+          hostAddress: hostAddress,
+        );
+        return;
+      }
+
       final apiRes = await _profileService.checkInEvacuee(id, _selectedCenter!.id);
 
       if (apiRes['success'] != true) {
@@ -542,7 +618,25 @@ class _CheckInScreenState extends State<CheckInScreen> {
         hostAddress: hostAddress,
       );
 
-      if (mounted) _showSuccessDialog(profile.fullName, latitude, longitude, checkInTimestamp, hostAddress: hostAddress);
+      await _offlineStore.upsertActiveCheckIn({
+        'profileId': id,
+        'fullName': profile.fullName,
+        'centerId': _selectedCenter!.id,
+        'centerName': _selectedCenter!.name,
+        'centerBarangay': _selectedCenter!.barangay,
+        'timestamp': (checkInTimestamp ?? DateTime.now()).toIso8601String(),
+        'synced': true,
+      });
+
+      if (mounted) {
+        _showSuccessDialog(
+          profile.fullName,
+          latitude,
+          longitude,
+          checkInTimestamp,
+          hostAddress: hostAddress,
+        );
+      }
     } catch (e) {
       debugPrint("CHECK-IN ERROR: $e");
 
@@ -557,7 +651,94 @@ class _CheckInScreenState extends State<CheckInScreen> {
         return;
       }
 
+      final message = e.toString().toLowerCase();
+      final isNetworkIssue = message.contains('network') || message.contains('socket');
+      if (isNetworkIssue) {
+        await _queueCheckIn(
+          profile: profile,
+          profileId: id,
+          vulnerabilities: vulnerabilities,
+          proofUrl: proofUrl,
+          proofPath: proofPath,
+          proofFileName: proofFileName,
+          latitude: latitude,
+          longitude: longitude,
+          timestamp: checkInTimestamp,
+          hostAddress: hostAddress,
+        );
+        return;
+      }
+
       if (mounted) _showErrorDialog("Sync Error", "Check-In failed:\n\n$e");
+    }
+  }
+
+  Future<void> _queueCheckIn({
+    required Profile profile,
+    required String profileId,
+    required List<String> vulnerabilities,
+    String? proofUrl,
+    String? proofPath,
+    String? proofFileName,
+    double? latitude,
+    double? longitude,
+    DateTime? timestamp,
+    String? hostAddress,
+  }) async {
+    if (_selectedCenter == null) return;
+
+    final DateTime recordedTime = timestamp ?? DateTime.now();
+    final payload = {
+      'profileId': profileId,
+      'fullName': profile.fullName,
+      'centerId': _selectedCenter!.id,
+      'centerName': _selectedCenter!.name,
+      'centerBarangay': _selectedCenter!.barangay,
+      'age': profile.age,
+      'sex': profile.sex,
+      'barangay': profile.barangay,
+      'household': profile.household,
+      'headOfFamily': profile.headOfFamily,
+      'proofUrl': proofUrl,
+      'proofPath': proofPath,
+      'proofFileName': proofFileName,
+      'isOutsideEc': _isOutsideEc,
+      'hostAddress': hostAddress,
+      'latitude': latitude,
+      'longitude': longitude,
+      'checkInTimestamp': recordedTime.toIso8601String(),
+      'isPregnant': vulnerabilities.contains('Pregnant'),
+      'isLactating': vulnerabilities.contains('Lactating Mother'),
+      'isChildHeaded': vulnerabilities.contains('Child-Headed Family'),
+      'isSingleHeaded': vulnerabilities.contains('Single-Headed Family'),
+      'isSoloParent': vulnerabilities.contains('Solo Parent'),
+      'isPwd': vulnerabilities.contains('Person With Disability'),
+      'isIp': vulnerabilities.contains('Indigenous People'),
+      'is4Ps': vulnerabilities.contains("4P's Beneficiaries"),
+      'isLgbt': vulnerabilities.contains('LGBTQIA+'),
+    };
+
+    await _offlineStore.enqueueCheckIn(payload);
+    await _offlineStore.upsertActiveCheckIn({
+      'profileId': profileId,
+      'fullName': profile.fullName,
+      'centerId': _selectedCenter!.id,
+      'centerName': _selectedCenter!.name,
+      'centerBarangay': _selectedCenter!.barangay,
+      'timestamp': recordedTime.toIso8601String(),
+      'synced': false,
+    });
+
+    if (mounted) {
+      _showSuccessDialog(
+        profile.fullName,
+        latitude,
+        longitude,
+        recordedTime,
+        hostAddress: hostAddress,
+        queued: true,
+      );
+      _showOfflineSnackbar('Offline — check-in queued for sync');
     }
   }
 
@@ -640,14 +821,16 @@ class _CheckInScreenState extends State<CheckInScreen> {
                       const SizedBox(height: 8),
                       _buildDropdown<String>(
                         value: _selectedBarangay,
-                        hint: "Select barangay...",
-                        items: _barangayList
-                            .map((b) => DropdownMenuItem(
-                                  value: b,
-                                  child: Text(b),
-                                ))
-                            .toList(),
-                        onChanged: _onBarangayChanged,
+                        hint: _barangayList.isEmpty ? "Loading or no barangays..." : "Select barangay...",
+                        items: _barangayList.isEmpty
+                            ? []
+                            : _barangayList
+                                .map((b) => DropdownMenuItem(
+                                      value: b,
+                                      child: Text(b),
+                                    ))
+                                .toList(),
+                        onChanged: _barangayList.isEmpty ? null : _onBarangayChanged,
                       ),
 
                       const SizedBox(height: 24),
@@ -908,6 +1091,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
     double? longitude,
     DateTime? timestamp, {
     String? hostAddress,
+    bool queued = false,
   }) {
     final String formattedTime = timestamp != null
         ? '${timestamp.year}-${timestamp.month.toString().padLeft(2, '0')}-${timestamp.day.toString().padLeft(2, '0')}  '
@@ -945,8 +1129,10 @@ class _CheckInScreenState extends State<CheckInScreen> {
                 ),
               ),
               const SizedBox(height: 20),
-              const Text("Check-In Successful",
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              Text(
+                queued ? "Stored Offline" : "Check-In Successful",
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 8),
               // Outside EC badge
               if (hostAddress != null)
@@ -973,7 +1159,9 @@ class _CheckInScreenState extends State<CheckInScreen> {
                 ),
               const SizedBox(height: 12),
               Text(
-                "$name has been verified and checked in to ${_selectedCenter?.name}.",
+                queued
+                    ? "$name has been saved offline. Data will sync automatically when the device reconnects."
+                    : "$name has been verified and checked in to ${_selectedCenter?.name}.",
                 textAlign: TextAlign.center,
                 style: TextStyle(
                     color: Colors.grey[600], fontSize: 15, height: 1.4),

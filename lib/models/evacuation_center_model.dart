@@ -37,13 +37,15 @@ class EvacuationCenter {
       id: json['id']?.toString() ?? '',
       name: json['name']?.toString() ?? 'Unknown Center',
 
-      // 🔧 FIX: barangay is a nested object, extract the name
-      barangay: json['barangay'] is Map
-          ? json['barangay']['name']?.toString() ?? ''
-          : json['barangay']?.toString() ?? '',
+      // 🔧 FIX: barangay is nested inside 'address' object
+      barangay: json['address'] is Map && json['address']['barangay'] is Map
+          ? json['address']['barangay']['name']?.toString() ?? 'Unknown'
+          : json['barangay'] is Map
+              ? json['barangay']['name']?.toString() ?? 'Unknown'
+              : json['barangay']?.toString() ?? 'Unknown',
 
-      sitio: json['sitio']?.toString(),
-      purok: json['purok']?.toString(),
+      sitio: json['address'] is Map ? json['address']['sitio']?.toString() : json['sitio']?.toString(),
+      purok: json['address'] is Map ? json['address']['purok']?.toString() : json['purok']?.toString(),
 
       // 🔧 FIX: evacuationStatus is a nested object, extract the id
       evacuationStatus: json['evacuationStatus'] is Map
@@ -91,4 +93,23 @@ class EvacuationCenter {
   }
 
   bool get isAvailable => isActivated;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'barangay': barangay,
+      'sitio': sitio,
+      'purok': purok,
+      'evacuationStatus': evacuationStatus,
+      'evacuationType': evacuationType,
+      'accomodationArea': accomodationArea,
+      'isActivated': isActivated,
+      'isOperational': isOperational,
+      'hasElectricity': hasElectricity,
+      'hasWaterSupply': hasWaterSupply,
+      'totalMembersCheckedIn': totalMembersCheckedIn,
+      'totalFamilyCheckedIn': totalFamilyCheckedIn,
+    };
+  }
 }

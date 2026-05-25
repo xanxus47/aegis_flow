@@ -2,6 +2,8 @@
 import 'package:flutter/material.dart';
 import 'check_in_screen.dart';
 import 'check_out_screen.dart';
+import '../refugeex_offline/sync_manager.dart';
+import '../refugeex_offline/sync_state.dart';
 
 class HomeScreen extends StatelessWidget {
   final String? userName;
@@ -107,6 +109,86 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
+  Widget _buildSyncStatusCard() {
+    return StreamBuilder<SyncState>(
+      stream: SyncManager.instance.stateStream,
+      initialData: SyncManager.instance.state,
+      builder: (context, snapshot) {
+        final SyncState state = snapshot.data ?? SyncState.initial();
+        final bool hasPending = state.pendingActions > 0;
+        final Color badgeColor = hasPending ? Colors.orange : Colors.green;
+        final Color background = hasPending
+            ? Colors.orange.shade50
+            : Colors.green.shade50;
+
+        return Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: badgeColor.withOpacity(0.3)),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                hasPending
+                    ? Icons.sync_problem_rounded
+                    : Icons.cloud_done_rounded,
+                color: badgeColor,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      hasPending
+                          ? 'Offline queue: ${state.pendingActions} pending'
+                          : 'All offline data synced',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: badgeColor,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      state.isSyncing
+                          ? 'Syncing now...'
+                          : state.isOnline
+                              ? 'Connected'
+                              : 'Offline mode',
+                      style: TextStyle(
+                        color: Colors.blueGrey.shade500,
+                        fontSize: 12,
+                      ),
+                    ),
+                    if (state.lastMessage != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          state.lastMessage!,
+                          style: TextStyle(
+                            color: Colors.blueGrey.shade400,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              TextButton(
+                onPressed: state.isSyncing
+                    ? null
+                    : () => SyncManager.instance.triggerManualSync(),
+                child: const Text('Sync now'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -157,6 +239,9 @@ class HomeScreen extends StatelessWidget {
             ),
             
             const SizedBox(height: 40), 
+
+            _buildSyncStatusCard(),
+            const SizedBox(height: 24),
             
             Text(
               'QUICK ACTIONS', 

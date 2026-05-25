@@ -195,6 +195,39 @@ class _LoginScreenState extends State<LoginScreen> {
                                         ),
                                 ),
                               ),
+                              const SizedBox(height: 12),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 12,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF1F5F9),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Icon(
+                                      Icons.wifi_off_rounded,
+                                      size: 18,
+                                      color: Colors.blueGrey.shade500,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Login requires an internet connection; offline work is available after you\'ve signed in once.',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.blueGrey.shade600,
+                                          height: 1.3,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ],
                           ),
                         ),

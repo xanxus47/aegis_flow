@@ -4,10 +4,12 @@ import 'package:http/http.dart' as http;
 import 'auth_service.dart';
 import '../models/profile_model.dart';
 import '../models/evacuation_center_model.dart';
+import '../refugeex_offline/offline_store.dart';
 
 class ProfileService {
   static const String baseUrl = 'https://citrusapi-dev-svex.onrender.com/api/v1';
   final AuthService _authService = AuthService();
+  final OfflineStore _offlineStore = OfflineStore.instance;
 
   // ----------------------------------------------------------------
   // 1. HELPER: Extract ID
@@ -140,9 +142,12 @@ class ProfileService {
           }
         }
 
+        final profile = Profile.fromJson(profileJson);
+        await _offlineStore.cacheProfile(profile);
         return {
           'success': true,
-          'data': Profile.fromJson(profileJson)
+          'data': profile,
+          'fromCache': false,
         };
       } else if (response.statusCode == 404) {
         return {
@@ -156,11 +161,30 @@ class ProfileService {
         };
       }
 
+      final cached = _offlineStore.getCachedProfile(profileId);
+      if (cached != null) {
+        return {
+          'success': true,
+          'data': cached,
+          'fromCache': true,
+          'message': 'Loaded from offline cache'
+        };
+      }
+
       return {
         'success': false,
         'message': 'Server Error (${response.statusCode})'
       };
     } catch (e) {
+      final cached = _offlineStore.getCachedProfile(profileId);
+      if (cached != null) {
+        return {
+          'success': true,
+          'data': cached,
+          'fromCache': true,
+          'message': 'Offline cache hit'
+        };
+      }
       return {'success': false, 'message': 'Network error: $e'};
     }
   }
@@ -319,15 +343,26 @@ class ProfileService {
 
         if (response.statusCode == 200) {
           final decodedBody = jsonDecode(response.body);
+          print('✅ RAW CENTERS RESPONSE: ${response.body}');
+          
           List dynamicList = [];
           
-          if (decodedBody is Map && decodedBody.containsKey('data')) {
-            final innerData = decodedBody['data'];
-            if (innerData is Map && innerData.containsKey('result') && innerData['result'] is List) {
-              dynamicList = innerData['result'];
+          if (decodedBody is Map) {
+            // Check common response wrappers
+            if (decodedBody['data'] != null) {
+              final d = decodedBody['data'];
+              if (d is List) {
+                dynamicList = d;
+              } else if (d is Map) {
+                if (d['result'] is List) dynamicList = d['result'];
+                else if (d['items'] is List) dynamicList = d['items'];
+                else if (d['centers'] is List) dynamicList = d['centers'];
+              }
+            } else if (decodedBody['result'] is List) {
+              dynamicList = decodedBody['result'];
+            } else if (decodedBody['items'] is List) {
+              dynamicList = decodedBody['items'];
             }
-          } else if (decodedBody is Map && decodedBody.containsKey('result') && decodedBody['result'] is List) {
-            dynamicList = decodedBody['result'];
           } else if (decodedBody is List) {
             dynamicList = decodedBody;
           }
@@ -355,8 +390,18 @@ class ProfileService {
         }
       }
 
-      return {'success': true, 'data': allCenters};
+      await _offlineStore.cacheEvacuationCenters(allCenters);
+      return {'success': true, 'data': allCenters, 'fromCache': false};
     } catch (e) {
+      final cachedCenters = _offlineStore.getCachedCenters();
+      if (cachedCenters.isNotEmpty) {
+        return {
+          'success': true,
+          'data': cachedCenters,
+          'fromCache': true,
+          'message': 'Loaded cached centers'
+        };
+      }
       return {'success': false, 'message': 'Error parsing centers: $e'};
     }
   }
