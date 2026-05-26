@@ -86,6 +86,19 @@ class SupabaseService {
     String? hostAddress,
   }) async {
     try {
+      // Check if already actively checked in to prevent duplicate rows
+      final existingRecord = await _supabase
+          .from('evacuee_details')
+          .select('id')
+          .eq('profile_id', profileId)
+          .eq('is_checked_in', true)
+          .maybeSingle();
+
+      if (existingRecord != null) {
+        print('⚠️ Evacuee $profileId is already checked in. Skipping Supabase insert to prevent duplicates.');
+        return;
+      }
+
       if (household != null && household.isNotEmpty) {
         await _ensureFamilyExists(household, barangay);
       }

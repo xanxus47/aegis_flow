@@ -162,6 +162,14 @@ class Profile {
       if (name.trim().isNotEmpty) parsedHead = name.trim();
     }
 
+    String? parsedBarangay;
+    if (json['address'] is Map && json['address']['barangay'] is Map) {
+      parsedBarangay = json['address']['barangay']['name']?.toString();
+    } else if (json['barangay'] is Map) {
+      parsedBarangay = json['barangay']['name']?.toString();
+    }
+    parsedBarangay ??= _getString('barangay') ?? _getString('barangayName');
+
     return Profile(
       id: _getString('id') ?? '',
       firstName: _getString('firstName') ?? _getString('first_name') ?? 'Unknown',
@@ -172,9 +180,9 @@ class Profile {
       sex: _getString('sex'),
       gender: _getString('gender'),
       civilStatus: _getString('civilStatus') ?? _getString('civil_status'),
-      barangay: _getString('barangay'),
-      sitio: _getString('sitio'),
-      purok: _getString('purok'),
+      barangay: parsedBarangay,
+      sitio: json['address'] is Map ? json['address']['sitio']?.toString() : _getString('sitio'),
+      purok: json['address'] is Map ? json['address']['purok']?.toString() : _getString('purok'),
       household: _getString('household') ?? _getString('householdId') ?? _getString('household_id'),
       family: _getString('family') ?? _getString('familyId') ?? _getString('family_id'),
       isHouseholdHead: _getBool('isHouseholdHead') ?? _getBool('is_household_head'),

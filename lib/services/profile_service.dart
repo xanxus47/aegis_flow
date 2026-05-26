@@ -72,10 +72,10 @@ class ProfileService {
     http.Response response;
 
     try {
-      response = await _doRequest(method, uri, headers, body);
+      response = await _doRequest(method, uri, headers, body).timeout(const Duration(seconds: 15));
     } catch (e) {
       print('🌐 Network error during request: $e');
-      return http.Response('{"message": "Network Error"}', 500);
+      throw Exception('Network Error: $e');
     }
 
     // Reactive Fallback: emergency refresh on 401
@@ -185,7 +185,7 @@ class ProfileService {
           'message': 'Offline cache hit'
         };
       }
-      return {'success': false, 'message': 'Network error: $e'};
+      return {'success': false, 'message': 'Network error: You are offline and this profile is not cached on your device. Please connect to the internet to scan this ID for the first time.'};
     }
   }
 
@@ -273,8 +273,10 @@ class ProfileService {
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         return {'success': true, 'message': 'Check-in Successful'};
-      } else if (response.statusCode == 409) {
-        return {'success': false, 'message': 'Already checked in!'};
+      } else if (response.statusCode == 409 || (response.statusCode == 400 && data?['message']?.toString().toLowerCase().contains('currently checked-in') == true)) {
+        // 🔧 FIX: If the backend says they are already checked in, treat it as a SUCCESS 
+        // so our app can proceed to add them to Supabase and the local active cache.
+        return {'success': true, 'message': 'Check-in Successful (Already checked in on server)'};
       } else if (response.statusCode == 401) {
         return {'success': false, 'message': 'Session expired'};
       }
@@ -306,17 +308,21 @@ class ProfileService {
       print('📡 Check-out status: ${response.statusCode}');
       print('📦 Check-out response: ${response.body}');
 
+      final data =
+          response.body.isNotEmpty ? jsonDecode(response.body) : null;
+
       if (response.statusCode == 200 ||
           response.statusCode == 201 ||
           response.statusCode == 204) {
         return {'success': true, 'message': 'Check-out Successful'};
+      } else if (response.statusCode == 400 && data?['message']?.toString().toLowerCase().contains('not checked-in') == true) {
+        // If the server says they're already checked out, consider it a success to prevent sync blocking
+        return {'success': true, 'message': 'Check-out Successful (Already checked out)'};
       } else if (response.statusCode == 401) {
         return {'success': false, 'message': 'Session expired'};
       }
 
       // 🔧 Show status code + full API response body so we know exactly what failed
-      final data =
-          response.body.isNotEmpty ? jsonDecode(response.body) : null;
       return {
         'success': false,
         'message':

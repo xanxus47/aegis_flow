@@ -136,10 +136,11 @@ class SyncManager {
     }
 
     final apiRes = await _profileService.checkInEvacuee(profileId, centerId);
-    if (apiRes['success'] != true) {
+    if (apiRes['success'] != true && apiRes['message'] != 'Already checked in!') {
       throw Exception(apiRes['message'] ?? 'Check-in API failed');
     }
 
+    // Proceed to track in Supabase (even if already checked in, to ensure it wasn't missed due to a timeout)
     await _supabaseService.trackEvacueeCheckIn(
       profileId: profileId,
       fullName: payload['fullName']?.toString() ?? 'Unknown',
@@ -190,7 +191,7 @@ class SyncManager {
     }
 
     final apiRes = await _profileService.checkOutEvacuee(profileId, centerId);
-    if (apiRes['success'] != true) {
+    if (apiRes['success'] != true && !apiRes['message'].toString().contains('Already checked out')) {
       throw Exception(apiRes['message'] ?? 'Check-out API failed');
     }
 
