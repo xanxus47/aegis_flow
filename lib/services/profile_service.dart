@@ -5,6 +5,7 @@ import 'auth_service.dart';
 import '../models/profile_model.dart';
 import '../models/evacuation_center_model.dart';
 import '../refugeex_offline/offline_store.dart';
+import '../refugeex_offline/roster_sync_service.dart';
 
 class ProfileService {
   static const String baseUrl = 'https://citrusapi-dev-svex.onrender.com/api/v1';
@@ -185,6 +186,21 @@ class ProfileService {
           'message': 'Offline cache hit'
         };
       }
+      
+      // 🚀 NEW: Fallback to Sqflite offline database if Hive cache misses
+      try {
+        final sqliteRow = await RosterSyncService.instance.getProfileLocally(profileId);
+        if (sqliteRow != null) {
+          final profile = Profile.fromJson(sqliteRow);
+          return {
+            'success': true,
+            'data': profile,
+            'fromCache': true,
+            'message': 'Offline SQLite hit'
+          };
+        }
+      } catch (_) {}
+
       return {'success': false, 'message': 'Network error: You are offline and this profile is not cached on your device. Please connect to the internet to scan this ID for the first time.'};
     }
   }
