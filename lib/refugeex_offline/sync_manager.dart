@@ -38,15 +38,15 @@ class SyncManager {
     _state = _state.copyWith(pendingActions: _store.pendingActionCount.value);
     _store.pendingActionCount.addListener(_handlePendingChange);
 
-    _connectivitySub = _connectivity.onConnectivityChanged.listen((result) {
-      final bool online = result != ConnectivityResult.none;
+    // ✅ FIX 1: results is List<ConnectivityResult> in connectivity_plus v6+
+    _connectivitySub = _connectivity.onConnectivityChanged.listen((results) {
+      final bool online = results.any((r) => r != ConnectivityResult.none);
       _emit(_state.copyWith(isOnline: online));
       if (online) {
         processQueue();
       }
     });
 
-    // Kick off initial sync attempt.
     await processQueue();
   }
 
@@ -140,7 +140,6 @@ class SyncManager {
       throw Exception(apiRes['message'] ?? 'Check-in API failed');
     }
 
-    // Proceed to track in Supabase (even if already checked in, to ensure it wasn't missed due to a timeout)
     await _supabaseService.trackEvacueeCheckIn(
       profileId: profileId,
       fullName: payload['fullName']?.toString() ?? 'Unknown',
@@ -199,14 +198,16 @@ class SyncManager {
     await _store.removeActiveCheckIn(profileId);
   }
 
+  // ✅ FIX 2: checkConnectivity() also returns List in v6+, ping Supabase not Google
   Future<bool> _hasInternet() async {
     final connectivity = await _connectivity.checkConnectivity();
-    if (connectivity == ConnectivityResult.none) return false;
+    if (connectivity.every((r) => r == ConnectivityResult.none)) return false;
 
     try {
-      final resp = await http.get(Uri.parse('https://www.google.com'))
+      final resp = await http
+          .get(Uri.parse('https://fmcakdpeociqovseukic.supabase.co')) // 👈 replace with your actual Supabase URL
           .timeout(const Duration(seconds: 5));
-      return resp.statusCode == 200;
+      return resp.statusCode < 500;
     } catch (_) {
       return false;
     }
