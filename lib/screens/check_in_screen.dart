@@ -244,298 +244,390 @@ class _CheckInScreenState extends State<CheckInScreen> {
   // VULNERABILITY DIALOG
   // ----------------------------------------------------------------
   void _showVulnerabilityDialog(Profile profile, String id) {
-    List<String> selectedOptions = [];
-    _isOutsideEc = false;
-    final TextEditingController hostAddressController = TextEditingController();
+  List<String> selectedOptions = [];
+  _isOutsideEc = false;
+  String? selectedSex; // ← no pre-fill, default is null
+  final TextEditingController hostAddressController = TextEditingController();
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text("Assessment"),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: ListView(
-                  shrinkWrap: true,
-                  children: [
-                    Text("Profile:",
-                        style: TextStyle(color: Colors.grey[600], fontSize: 13)),
-                    Text(profile.fullName,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 16)),
-                    const SizedBox(height: 12),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: _isOutsideEc
-                            ? Colors.orange.shade50
-                            : Colors.green.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                            color: _isOutsideEc ? Colors.orange : Colors.green),
-                      ),
-                      child: SwitchListTile(
-                        title: Text(
-                          _isOutsideEc
-                              ? "Outside EC (Home-based)"
-                              : "Inside Evacuation Center",
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                            color: _isOutsideEc
-                                ? Colors.deepOrange
-                                : Colors.green[800],
-                          ),
-                        ),
-                        subtitle: Text(
-                          _isOutsideEc
-                              ? "Staying at relative's house"
-                              : "Physically in center",
-                          style: const TextStyle(fontSize: 11),
-                        ),
-                        value: _isOutsideEc,
-                        activeColor: Colors.deepOrange,
-                        onChanged: (val) {
-                          setDialogState(() {
-                            _isOutsideEc = val;
-                            // Clear address when toggling back to inside EC
-                            if (!val) hostAddressController.clear();
-                          });
-                        },
-                      ),
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) {
+      return StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text("Assessment"),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  Text("Profile:",
+                      style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+                  Text(profile.fullName,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 12),
+
+                  // ── SEX DROPDOWN ──
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue.shade200),
                     ),
-
-                    // ── HOST ADDRESS FIELD (slides in when Outside EC is ON) ──
-                    if (_isOutsideEc) ...[
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.orange.shade200),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
                           children: [
-                            Row(
-                              children: [
-                                Icon(Icons.home_outlined,
-                                    size: 15, color: Colors.deepOrange[400]),
-                                const SizedBox(width: 6),
-                                Text(
-                                  "Host Address / Location",
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.deepOrange[700],
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  "(required)",
-                                  style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.deepOrange[300]),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            TextField(
-                              controller: hostAddressController,
-                              maxLines: 2,
-                              textCapitalization: TextCapitalization.sentences,
-                              decoration: InputDecoration(
-                                hintText:
-                                    "e.g. House of Juan dela Cruz, Purok 3, Nicolas",
-                                hintStyle: TextStyle(
-                                    fontSize: 12, color: Colors.grey[400]),
-                                filled: true,
-                                fillColor: Colors.white,
-                                contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 10),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide(
-                                      color: Colors.orange.shade300),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide(
-                                      color: Colors.deepOrange, width: 1.5),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide(
-                                      color: Colors.orange.shade200),
-                                ),
+                            Icon(Icons.person_outline,
+                                size: 14, color: Colors.blue[700]),
+                            const SizedBox(width: 6),
+                            Text(
+                              "Sex",
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue[700],
                               ),
-                              style: const TextStyle(fontSize: 13),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              "(from record: ${profile.sex ?? 'Unknown'})",
+                              style: TextStyle(
+                                  fontSize: 11, color: Colors.grey[500]),
                             ),
                           ],
                         ),
-                      ),
-                    ],
-
-                    const Divider(height: 24),
-                    Text("Vulnerabilities:",
-                        style: TextStyle(color: Colors.grey[600], fontSize: 13)),
-                    ..._vulnerabilityOptions.map((option) {
-                      final isChecked = selectedOptions.contains(option);
-                      return CheckboxListTile(
-                        title: Text(option),
-                        value: isChecked,
-                        dense: true,
-                        activeColor: _primaryColor,
-                        onChanged: (bool? val) {
-                          setDialogState(() {
-                            if (val == true) {
-                              selectedOptions.add(option);
-                            } else {
-                              selectedOptions.remove(option);
-                            }
-                          });
-                        },
-                      );
-                    }),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    hostAddressController.dispose();
-                    Navigator.pop(context);
-                    _resetScanner();
-                  },
-                  child: const Text("Cancel"),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    // Require host address when outside EC
-                    if (_isOutsideEc &&
-                        hostAddressController.text.trim().isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                              'Please enter the host address for outside-EC evacuee.'),
-                          backgroundColor: Colors.deepOrange,
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<String>(
+                          value: selectedSex,
+                          hint: const Text('Select sex...'),
+                          decoration: InputDecoration(
+                            filled: true,
+                            fillColor: Colors.white,
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 8),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide:
+                                  BorderSide(color: Colors.blue.shade200),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide:
+                                  BorderSide(color: Colors.blue.shade200),
+                            ),
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                                value: 'Male', child: Text('Male')),
+                            DropdownMenuItem(
+                                value: 'Female', child: Text('Female')),
+                          ],
+                          onChanged: (val) =>
+                              setDialogState(() => selectedSex = val),
                         ),
-                      );
-                      return;
-                    }
-                    final String? hostAddress = _isOutsideEc
-                        ? hostAddressController.text.trim()
-                        : null;
-                    hostAddressController.dispose();
-                    Navigator.pop(context);
-                    _takeProofPhotoAndCheckIn(
-                        profile, id, selectedOptions,
-                        hostAddress: hostAddress);
-                  },
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: _primaryColor),
-                  child: const Text("Next: Take Photo",
-                      style: TextStyle(color: Colors.white)),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // ── INSIDE/OUTSIDE EC TOGGLE ──
+                  Container(
+                    decoration: BoxDecoration(
+                      color: _isOutsideEc
+                          ? Colors.orange.shade50
+                          : Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                          color:
+                              _isOutsideEc ? Colors.orange : Colors.green),
+                    ),
+                    child: SwitchListTile(
+                      title: Text(
+                        _isOutsideEc
+                            ? "Outside EC (Home-based)"
+                            : "Inside Evacuation Center",
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: _isOutsideEc
+                              ? Colors.deepOrange
+                              : Colors.green[800],
+                        ),
+                      ),
+                      subtitle: Text(
+                        _isOutsideEc
+                            ? "Staying at relative's house"
+                            : "Physically in center",
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                      value: _isOutsideEc,
+                      activeColor: Colors.deepOrange,
+                      onChanged: (val) {
+                        setDialogState(() {
+                          _isOutsideEc = val;
+                          if (!val) hostAddressController.clear();
+                        });
+                      },
+                    ),
+                  ),
+
+                  // ── HOST ADDRESS FIELD ──
+                  if (_isOutsideEc) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border:
+                            Border.all(color: Colors.orange.shade200),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.home_outlined,
+                                  size: 15,
+                                  color: Colors.deepOrange[400]),
+                              const SizedBox(width: 6),
+                              Text(
+                                "Host Address / Location",
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.deepOrange[700],
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                "(required)",
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.deepOrange[300]),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: hostAddressController,
+                            maxLines: 2,
+                            textCapitalization:
+                                TextCapitalization.sentences,
+                            decoration: InputDecoration(
+                              hintText:
+                                  "e.g. House of Juan dela Cruz, Purok 3, Nicolas",
+                              hintStyle: TextStyle(
+                                  fontSize: 12, color: Colors.grey[400]),
+                              filled: true,
+                              fillColor: Colors.white,
+                              contentPadding:
+                                  const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 10),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide(
+                                    color: Colors.orange.shade300),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: const BorderSide(
+                                    color: Colors.deepOrange,
+                                    width: 1.5),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide(
+                                    color: Colors.orange.shade200),
+                              ),
+                            ),
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
+                  const Divider(height: 24),
+                  Text("Vulnerabilities:",
+                      style:
+                          TextStyle(color: Colors.grey[600], fontSize: 13)),
+                  ..._vulnerabilityOptions.map((option) {
+                    final isChecked = selectedOptions.contains(option);
+                    return CheckboxListTile(
+                      title: Text(option),
+                      value: isChecked,
+                      dense: true,
+                      activeColor: _primaryColor,
+                      onChanged: (bool? val) {
+                        setDialogState(() {
+                          if (val == true) {
+                            selectedOptions.add(option);
+                          } else {
+                            selectedOptions.remove(option);
+                          }
+                        });
+                      },
+                    );
+                  }),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  hostAddressController.dispose();
+                  Navigator.pop(context);
+                  _resetScanner();
+                },
+                child: const Text("Cancel"),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  // ← Validate sex selection
+                  if (selectedSex == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Please select the sex of the evacuee.'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
+                  // Require host address when outside EC
+                  if (_isOutsideEc &&
+                      hostAddressController.text.trim().isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                            'Please enter the host address for outside-EC evacuee.'),
+                        backgroundColor: Colors.deepOrange,
+                      ),
+                    );
+                    return;
+                  }
+                  final String? hostAddress = _isOutsideEc
+                      ? hostAddressController.text.trim()
+                      : null;
+                  hostAddressController.dispose();
+                  Navigator.pop(context);
+                  _takeProofPhotoAndCheckIn(
+                    profile,
+                    id,
+                    selectedOptions,
+                    hostAddress: hostAddress,
+                    overrideSex: selectedSex, // ← pass selected sex
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: _primaryColor),
+                child: const Text("Next: Take Photo",
+                    style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+}
 
   // ----------------------------------------------------------------
   // PHOTO + LOCATION + TIMESTAMP CAPTURE
   // ----------------------------------------------------------------
   Future<void> _takeProofPhotoAndCheckIn(
-      Profile profile, String id, List<String> vulnerabilities,
-      {String? hostAddress}) async {
-    try {
-      final DateTime checkInTimestamp = DateTime.now();
-      final Future<Position?> locationFuture = _getCurrentLocation();
-      final bool initialNetwork = await _hasNetwork();
+    Profile profile, String id, List<String> vulnerabilities,
+    {String? hostAddress, String? overrideSex}) async {
+  try {
+    final DateTime checkInTimestamp = DateTime.now();
+    final Future<Position?> locationFuture = _getCurrentLocation();
+    final bool initialNetwork = await _hasNetwork();
 
-      if (_isTorchOn) {
-        await _controller?.toggleTorch();
-      }
-      await _controller?.stop();
+    if (_isTorchOn) {
+      await _controller?.toggleTorch();
+    }
+    await _controller?.stop();
 
-      final XFile? photo = await _picker.pickImage(
-        source: ImageSource.camera,
-        imageQuality: 50,
-        maxWidth: 800,
-      );
+    final XFile? photo = await _picker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 50,
+      maxWidth: 800,
+    );
 
-      if (photo == null) {
-        await _controller?.start();
-        if (_isTorchOn) await _controller?.toggleTorch();
-        _resetScanner();
-        return;
-      }
-
-      setState(() => _isProcessing = true);
-
-      final Position? position = await locationFuture;
-      final double? latitude = position?.latitude;
-      final double? longitude = position?.longitude;
-
-      final File file = File(photo.path);
-      final String fileName =
-          'proof_${id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-
-      String? proofUrl;
-      String? proofPath;
-
-      if (initialNetwork) {
-        try {
-          final storage = Supabase.instance.client.storage.from('checkin-proofs');
-          await storage.upload(fileName, file);
-          proofUrl = storage.getPublicUrl(fileName);
-        } catch (uploadError) {
-          debugPrint('Proof upload failed, saving offline: $uploadError');
-          proofPath = file.path;
-        }
-      } else {
-        proofPath = file.path;
-      }
-
-      await _processCheckIn(
-        profile,
-        id,
-        proofUrl,
-        vulnerabilities,
-        latitude: latitude,
-        longitude: longitude,
-        checkInTimestamp: checkInTimestamp,
-        hostAddress: hostAddress,
-        proofPath: proofPath,
-        proofFileName: fileName,
-      );
-    } catch (e) {
-      debugPrint("PHOTO ERROR: $e");
+    if (photo == null) {
       await _controller?.start();
       if (_isTorchOn) await _controller?.toggleTorch();
+      _resetScanner();
+      return;
+    }
 
-      if (e.toString().contains('JWT') || e.toString().contains('Auth')) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Session expired. Please log in again.'),
-              backgroundColor: Colors.red),
-        );
-        widget.onSignOut();
-        return;
-      }
+    setState(() => _isProcessing = true);
 
-      if (mounted) {
-        _showErrorDialog("Photo Error", "Failed to capture proof: $e");
+    final Position? position = await locationFuture;
+    final double? latitude = position?.latitude;
+    final double? longitude = position?.longitude;
+
+    final File file = File(photo.path);
+    final String fileName =
+        'proof_${id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+    String? proofUrl;
+    String? proofPath;
+
+    if (initialNetwork) {
+      try {
+        final storage =
+            Supabase.instance.client.storage.from('checkin-proofs');
+        await storage.upload(fileName, file);
+        proofUrl = storage.getPublicUrl(fileName);
+      } catch (uploadError) {
+        debugPrint('Proof upload failed, saving offline: $uploadError');
+        proofPath = file.path;
       }
+    } else {
+      proofPath = file.path;
+    }
+
+    await _processCheckIn(
+      profile,
+      id,
+      proofUrl,
+      vulnerabilities,
+      latitude: latitude,
+      longitude: longitude,
+      checkInTimestamp: checkInTimestamp,
+      hostAddress: hostAddress,
+      proofPath: proofPath,
+      proofFileName: fileName,
+      overrideSex: overrideSex, // ← pass it down
+    );
+  } catch (e) {
+    debugPrint("PHOTO ERROR: $e");
+    await _controller?.start();
+    if (_isTorchOn) await _controller?.toggleTorch();
+
+    if (e.toString().contains('JWT') || e.toString().contains('Auth')) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Session expired. Please log in again.'),
+            backgroundColor: Colors.red),
+      );
+      widget.onSignOut();
+      return;
+    }
+
+    if (mounted) {
+      _showErrorDialog("Photo Error", "Failed to capture proof: $e");
     }
   }
+}
 
   // ----------------------------------------------------------------
   // PROCESS CHECK-IN (now receives lat/lng + timestamp)
@@ -551,6 +643,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
     String? hostAddress,
     String? proofPath,
     String? proofFileName,
+    String? overrideSex,
   }) async {
     if (_selectedCenter == null) return;
 
@@ -570,6 +663,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
           longitude: longitude,
           timestamp: checkInTimestamp,
           hostAddress: hostAddress,
+          overrideSex: overrideSex,
         );
         return;
       }
@@ -597,7 +691,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
         evacuationCenterName: _selectedCenter!.name,
         centerBarangay: _selectedCenter!.barangay,   // ← center's barangay
         age: profile.age?.toString(),
-        sex: profile.sex,
+        sex: overrideSex ?? profile.sex,
         barangay: profile.barangay,
         household: profile.household,
         headOfFamily: profile.headOfFamily,          // 👈 ADDED THIS LINE
@@ -665,6 +759,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
           longitude: longitude,
           timestamp: checkInTimestamp,
           hostAddress: hostAddress,
+          overrideSex: overrideSex,
         );
         return;
       }
@@ -684,6 +779,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
     double? longitude,
     DateTime? timestamp,
     String? hostAddress,
+    String? overrideSex,
   }) async {
     if (_selectedCenter == null) return;
 
@@ -695,7 +791,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
       'centerName': _selectedCenter!.name,
       'centerBarangay': _selectedCenter!.barangay,
       'age': profile.age,
-      'sex': profile.sex,
+      'sex': overrideSex ?? profile.sex,
       'barangay': profile.barangay,
       'household': profile.household,
       'headOfFamily': profile.headOfFamily,
