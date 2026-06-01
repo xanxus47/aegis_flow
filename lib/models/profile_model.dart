@@ -146,21 +146,41 @@ class Profile {
       return null;
     }
 
+
+
+
+print('RAW FAMILY JSON: ${json['family']}');
+print('RAW HEAD: ${json['headOfFamily']} / ${json['head_of_family']}');
+
+
     // ----------------------------------------------------------------
     // PARSE HEAD OF FAMILY
     // ----------------------------------------------------------------
     String? parsedHead;
-    final rawFamily = json['family'];
-    if (rawFamily is Map && rawFamily['headOfTheFamily'] is Map) {
-      final hof = rawFamily['headOfTheFamily'];
-      final last = hof['lastName']?.toString().trim() ?? '';
-      final first = hof['firstName']?.toString().trim() ?? '';
-      final mid = hof['middleName']?.toString().trim() ?? '';
+final rawFamily = json['family'];
+
+if (rawFamily is Map) {
+  // API returns family as a nested object
+  final hof = rawFamily['headOfTheFamily'];
+  if (hof is Map) {
+    final last  = hof['lastName']?.toString().trim() ?? '';
+    final first = hof['firstName']?.toString().trim() ?? '';
+    final mid   = hof['middleName']?.toString().trim() ?? '';
 
       String name = last.isNotEmpty ? '$last, $first' : first;
-      if (mid.isNotEmpty) name += ' $mid';
-      if (name.trim().isNotEmpty) parsedHead = name.trim();
-    }
+    if (mid.isNotEmpty) name += ' $mid';
+    if (name.trim().isNotEmpty) parsedHead = name.trim();
+  } else if (hof is String && hof.trim().isNotEmpty) {
+    // headOfTheFamily is already a plain string name
+    parsedHead = hof.trim();
+  }
+}
+
+// Fallback: try top-level keys directly
+parsedHead ??= _getString('headOfFamily')
+    ?? _getString('head_of_family')
+    ?? _getString('headOfTheFamily');
+
 
     String? parsedBarangay;
     if (json['address'] is Map && json['address']['barangay'] is Map) {
