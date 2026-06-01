@@ -1,10 +1,12 @@
 // lib/screens/home_screen.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'check_in_screen.dart';
 import 'check_out_screen.dart';
 import '../refugeex_offline/roster_sync_service.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   final String? userName;
   final VoidCallback onSignOut;
 
@@ -14,22 +16,141 @@ class HomeScreen extends StatelessWidget {
     required this.onSignOut,
   });
 
-  // Modern Color Palette mapped to login
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
   final Color _primaryColor = const Color(0xFF3B82F6);
-  final Color _checkInColor = const Color(0xFF10B981); 
-  final Color _checkOutColor = const Color(0xFFF59E0B); 
+  final Color _checkInColor = const Color(0xFF10B981);
+  final Color _checkOutColor = const Color(0xFFF59E0B);
+
+  StreamSubscription? _connectivitySub;
+  bool _isDownloading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _tryAutoDownload();
+    _connectivitySub = Connectivity().onConnectivityChanged.listen((result) async {
+      if (result != ConnectivityResult.none && !_isDownloading) {
+        final count = await RosterSyncService.instance.getRosterCount();
+        if (count == 0) await _downloadRoster();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _connectivitySub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _tryAutoDownload() async {
+    try {
+      final count = await RosterSyncService.instance.getRosterCount();
+      if (count > 0) return;
+      final connectivity = await Connectivity().checkConnectivity();
+      if (connectivity != ConnectivityResult.none) await _downloadRoster();
+    } catch (_) {}
+  }
+
+  Future<void> _downloadRoster() async {
+    if (_isDownloading || !mounted) return;
+    setState(() => _isDownloading = true);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Downloading offline roster...'), duration: Duration(seconds: 60)),
+    );
+    try {
+      await RosterSyncService.instance.downloadAndSyncRoster();
+      final count = await RosterSyncService.instance.getRosterCount();
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        _showDownloadSuccessDialog(count);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Offline roster sync failed: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isDownloading = false);
+    }
+  }
+
+  void _showDownloadSuccessDialog(int count) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.all(32),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(32),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 40,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(color: Colors.green.shade50, shape: BoxShape.circle),
+                child: Icon(Icons.download_done_rounded, size: 32, color: Colors.green.shade400),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Roster Downloaded!',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.blueGrey.shade900),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '$count profiles are now available offline. You can scan anyone even without internet.',
+                style: TextStyle(color: Colors.blueGrey.shade400, fontSize: 14),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 32),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green.shade500,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Got it!', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   void _navigateToCheckIn(BuildContext context) {
     Navigator.push(
-      context, 
-      MaterialPageRoute(builder: (_) => CheckInScreen(userName: userName, onSignOut: onSignOut))
+      context,
+      MaterialPageRoute(builder: (_) => CheckInScreen(userName: widget.userName, onSignOut: widget.onSignOut))
     );
   }
 
   void _navigateToCheckOut(BuildContext context) {
     Navigator.push(
-      context, 
-      MaterialPageRoute(builder: (_) => CheckOutScreen(userName: userName, onSignOut: onSignOut))
+      context,
+      MaterialPageRoute(builder: (_) => CheckOutScreen(userName: widget.userName, onSignOut: widget.onSignOut))
     );
   }
 
@@ -94,7 +215,7 @@ class HomeScreen extends StatelessWidget {
                       ),
                       onPressed: () { 
                         Navigator.pop(context); 
-                        onSignOut(); 
+                        widget.onSignOut(); 
                       },
                       child: const Text('Logout', style: TextStyle(fontWeight: FontWeight.bold)),
                     ),
@@ -151,7 +272,9 @@ class HomeScreen extends StatelessWidget {
                   ),
                   child: IconButton(
                     onPressed: () => _showLogoutConfirmation(context),
-                    icon: Icon(Icons.power_settings_new_rounded, color: Colors.blueGrey.shade700),
+                    icon: _isDownloading
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                        : Icon(Icons.power_settings_new_rounded, color: Colors.blueGrey.shade700),
                   ),
                 ),
               ],
