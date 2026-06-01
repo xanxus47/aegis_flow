@@ -90,71 +90,121 @@ class RosterSyncService {
     return null;
   }
 
-  Future<void> downloadAndSyncRoster() async {
-    const url = 'https://population-xanxus.aws-ap-northeast-1.turso.io/v2/pipeline';
-    const token = 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NzY5MTA0NTEsImlkIjoiMDE5ZGI3ZDMtNDIwMS03YWE2LWI0YzMtNDM0YjM1YzM5NTgyIiwicmlkIjoiZmJiMjM3OGMtODYzYy00NDQ0LWE1MWYtZDY2ZjNhNzcwZjVjIn0._NIcHRV5GdKayhavl-EQYCv96-nqlyxk-EmrpBYYmmA9782rSMfh--5LIAgINpUDd4FzCZBwZ93pA_n76cgOCg';
+  Future<void> downloadAndSyncRoster(String authToken) async {
+  final db = await database;
 
-    final payload = {
-      'requests': [
-        {
-          'type': 'execute',
-          'stmt': {
-            'sql': 'SELECT id, name, sex, gender, barangay, "sitio/proper", "purok/street", birthdate, civilstatus, householdid, familyid, householdhead FROM population'
-          }
-        },
-        {'type': 'close'}
-      ]
-    };
+  // ── Step 1: Download all profiles from Lester's API (paginated) ──
+  final Map<String, String> familyHeadMap = {}; // familyId → head name
+  final List<Map<String, dynamic>> allProfiles = [];
 
-    final response = await http.post(
-      Uri.parse(url),
+  int page = 1;
+  const int rows = 100;
+  bool hasMore = true;
+
+  while (hasMore) {
+    final response = await http.get(
+      Uri.parse('https://citrusapi-dev-svex.onrender.com/api/v1/profile?page=$page&rows=$rows'),
       headers: {
-        'Authorization': 'Bearer $token',
+        'Authorization': 'Bearer $authToken',
         'Content-Type': 'application/json',
       },
-      body: jsonEncode(payload),
     );
 
     if (response.statusCode != 200) {
-      throw Exception('Failed to download roster: ${response.body}');
+      throw Exception('Failed to fetch profiles on page $page: ${response.body}');
     }
 
     final data = jsonDecode(response.body);
-    final results = data['results'] as List;
-    final executeResult = results[0]['response']['result'];
-    
-    final rows = executeResult['rows'] as List;
+    final result = data['data'];
+    final List profiles = result['result'] ?? [];
 
-    final db = await database;
-    final batch = db.batch();
+    for (final p in profiles) {
+      allProfiles.add(p);
 
-    // Clear old data
-    batch.delete('profiles');
-
-    for (var row in rows) {
-      // Turso libSQL returns values like [{"type": "text", "value": "ID123"}, ...]
-      String? val(int index) {
-        final col = row[index];
-        if (col['type'] == 'null') return null;
-        return col['value']?.toString();
+      // Build familyId → head name map
+      final family = p['family'];
+      if (family is Map) {
+        final familyId = family['id']?.toString();
+        final hof = family['headOfTheFamily'];
+        if (familyId != null && hof is Map) {
+          final last  = hof['lastName']?.toString().trim() ?? '';
+          final first = hof['firstName']?.toString().trim() ?? '';
+          final mid   = hof['middleName']?.toString().trim() ?? '';
+          String name = last.isNotEmpty ? '$last, $first' : first;
+          if (mid.isNotEmpty) name += ' $mid';
+          if (name.trim().isNotEmpty) {
+            familyHeadMap[familyId] = name.trim().toUpperCase();
+          }
+        }
       }
-
-      batch.insert('profiles', {
-        'id': val(0),
-        'full_name': val(1),
-        'sex': val(2),
-        'gender': val(3),
-        'barangay': val(4),
-        'sitio': val(5),
-        'purok': val(6),
-        'birthdate': val(7),
-        'civil_status': val(8),
-        'household_id': val(9),
-        'family_id': val(10),
-        'head_of_family': val(11),
-      });
     }
 
-    await batch.commit(noResult: true);
+    final int totalPage = result['totalPage'] ?? 1;
+    if (page >= totalPage || profiles.isEmpty) {
+      hasMore = false;
+    } else {
+      page++;
+    }
   }
+
+  // ── Step 2: Write to SQLite ──
+  final batch = db.batch();
+  batch.delete('profiles');
+
+  for (final p in allProfiles) {
+    final String? profileId = p['id']?.toString();
+    if (profileId == null) continue;
+
+    // Parse name
+    final String lastName  = p['lastName']?.toString().trim() ?? '';
+    final String firstName = p['firstName']?.toString().trim() ?? '';
+    final String fullName  = lastName.isNotEmpty ? '$lastName, $firstName' : firstName;
+
+    // Parse sex
+    final sexObj = p['sex'];
+    final String? sex = sexObj is Map ? sexObj['name']?.toString() : null;
+
+    // Parse gender
+    final genderObj = p['gender'];
+    final String? gender = genderObj is Map ? genderObj['name']?.toString() : null;
+
+    // Parse barangay
+    final address = p['address'];
+    String? barangay;
+    String? sitio;
+    String? purok;
+    if (address is Map) {
+      barangay = address['barangay'] is Map ? address['barangay']['name']?.toString() : null;
+      sitio    = address['sitio']    is Map ? address['sitio']['name']?.toString()    : null;
+      purok    = address['purok']    is Map ? address['purok']['name']?.toString()    : null;
+    }
+
+    // Parse family/household IDs
+    final familyObj    = p['family'];
+    final householdObj = p['household'];
+    final String? familyId    = familyObj    is Map ? familyObj['id']?.toString()    : null;
+    final String? householdId = householdObj is Map ? householdObj['id']?.toString() : null;
+
+    // Look up head of family
+    final String? headOfFamily = familyId != null ? familyHeadMap[familyId] : null;
+
+    batch.insert('profiles', {
+      'id':             profileId,
+      'full_name':      fullName,
+      'sex':            sex,
+      'gender':         gender,
+      'barangay':       barangay,
+      'sitio':          sitio,
+      'purok':          purok,
+      'birthdate':      p['birthDate']?.toString(),
+      'civil_status':   null, // not in this response
+      'household_id':   householdId,
+      'family_id':      familyId,
+      'head_of_family': headOfFamily,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  await batch.commit(noResult: true);
+  print('✅ Roster synced: ${allProfiles.length} profiles, ${familyHeadMap.length} family heads mapped');
+}
 }

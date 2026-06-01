@@ -5,6 +5,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'check_in_screen.dart';
 import 'check_out_screen.dart';
 import '../refugeex_offline/roster_sync_service.dart';
+import '../services/auth_service.dart';
 
 class HomeScreen extends StatefulWidget {
   final String? userName;
@@ -29,16 +30,17 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isDownloading = false;
 
   @override
-  void initState() {
-    super.initState();
-    _tryAutoDownload();
-    _connectivitySub = Connectivity().onConnectivityChanged.listen((result) async {
-      if (result != ConnectivityResult.none && !_isDownloading) {
-        final count = await RosterSyncService.instance.getRosterCount();
-        if (count == 0) await _downloadRoster();
-      }
-    });
-  }
+void initState() {
+  super.initState();
+  _tryAutoDownload();
+  _connectivitySub = Connectivity().onConnectivityChanged.listen((results) async {
+    final bool online = results.any((r) => r != ConnectivityResult.none);
+    if (online && !_isDownloading) {
+      final count = await RosterSyncService.instance.getRosterCount();
+      if (count == 0) await _downloadRoster();
+    }
+  });
+}
 
   @override
   void dispose() {
@@ -56,29 +58,30 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _downloadRoster() async {
-    if (_isDownloading || !mounted) return;
-    setState(() => _isDownloading = true);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Downloading offline roster...'), duration: Duration(seconds: 60)),
-    );
-    try {
-      await RosterSyncService.instance.downloadAndSyncRoster();
-      final count = await RosterSyncService.instance.getRosterCount();
-      if (mounted) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        _showDownloadSuccessDialog(count);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Offline roster sync failed: $e'), backgroundColor: Colors.red),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isDownloading = false);
+  if (_isDownloading || !mounted) return;
+  setState(() => _isDownloading = true);
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(content: Text('Downloading offline roster...'), duration: Duration(seconds: 60)),
+  );
+  try {
+    final token = await AuthService().getAccessToken(); // ← add this
+    await RosterSyncService.instance.downloadAndSyncRoster(token); // ← pass token
+    final count = await RosterSyncService.instance.getRosterCount();
+    if (mounted) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      _showDownloadSuccessDialog(count);
     }
+  } catch (e) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Offline roster sync failed: $e'), backgroundColor: Colors.red),
+      );
+    }
+  } finally {
+    if (mounted) setState(() => _isDownloading = false);
   }
+}
 
   void _showDownloadSuccessDialog(int count) {
     showDialog(
