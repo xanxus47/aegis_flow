@@ -35,7 +35,8 @@ class RosterSyncService {
             birthdate TEXT,
             civil_status TEXT,
             household_id TEXT,
-            family_id TEXT
+            family_id TEXT,
+            head_of_family TEXT
           )
         ''');
       },
@@ -83,6 +84,7 @@ class RosterSyncService {
         'civilStatus': row['civil_status'],
         'householdId': row['household_id'],
         'familyId': row['family_id'],
+        'headOfFamily': row['head_of_family'],
       };
     }
     return null;
@@ -97,7 +99,7 @@ class RosterSyncService {
         {
           'type': 'execute',
           'stmt': {
-            'sql': 'SELECT id, name, sex, gender, barangay, "sitio/proper", "purok/street", birthdate, civilstatus, householdid, familyid FROM population'
+            'sql': 'SELECT id, name, sex, gender, barangay, "sitio/proper", "purok/street", birthdate, civilstatus, householdid, familyid, householdhead FROM population'
           }
         },
         {'type': 'close'}
@@ -149,6 +151,7 @@ class RosterSyncService {
         'civil_status': val(8),
         'household_id': val(9),
         'family_id': val(10),
+        'head_of_family': val(11),
       });
     }
 
