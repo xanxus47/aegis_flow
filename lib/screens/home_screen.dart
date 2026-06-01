@@ -292,21 +292,6 @@ class _HomeScreenState extends State<HomeScreen> {
             _buildActionCard('Check In', 'Scan QR to admit evacuee', Icons.login_rounded, _checkInColor, () => _navigateToCheckIn(context)),
             const SizedBox(height: 16),
             _buildActionCard('Check Out', 'Scan QR to release evacuee', Icons.logout_rounded, _checkOutColor, () => _navigateToCheckOut(context)),
-            const SizedBox(height: 16),
-            _buildActionCard('Sync Database', 'Download offline roster', Icons.download_rounded, Colors.blue, () async {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Downloading 37,000+ roster... This may take a minute.')));
-              try {
-                await RosterSyncService.instance.downloadAndSyncRoster();
-                final count = await RosterSyncService.instance.getRosterCount();
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✅ Successfully downloaded $count profiles for offline use!'), backgroundColor: Colors.green));
-                }
-              } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('❌ Sync failed: $e'), backgroundColor: Colors.red));
-                }
-              }
-            }),
           ],
         ),
       )
