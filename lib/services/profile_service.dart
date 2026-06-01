@@ -73,7 +73,8 @@ class ProfileService {
     http.Response response;
 
     try {
-      response = await _doRequest(method, uri, headers, body).timeout(const Duration(seconds: 15));
+      response = await _doRequest(method, uri, headers, body)
+          .timeout(const Duration(seconds: 15));
     } catch (e) {
       print('🌐 Network error during request: $e');
       throw Exception('Network Error: $e');
@@ -117,7 +118,8 @@ class ProfileService {
   // ----------------------------------------------------------------
   Future<Map<String, dynamic>> getProfileDetails(String profileId) async {
     try {
-      final response = await _authenticatedRequest('GET', '/profile/$profileId');
+      final response =
+          await _authenticatedRequest('GET', '/profile/$profileId');
 
       print('📡 GET Profile Status: ${response.statusCode}');
       print('📦 GET Profile Body: ${response.body}');
@@ -126,25 +128,41 @@ class ProfileService {
         final decodedBody = jsonDecode(response.body);
         Map<String, dynamic> profileJson = {};
 
-        // 🚨 UNWRAP THE NESTED JSON (With strict type casting to fix the Map error)
         if (decodedBody is Map) {
-          if (decodedBody.containsKey('data') && decodedBody['data'] != null) {
+          if (decodedBody.containsKey('data') &&
+              decodedBody['data'] != null) {
             final dataObj = decodedBody['data'];
             if (dataObj is Map && dataObj.containsKey('result')) {
-              profileJson = Map<String, dynamic>.from(dataObj['result'] is List ? dataObj['result'][0] : dataObj['result']);
+              profileJson = Map<String, dynamic>.from(
+                  dataObj['result'] is List
+                      ? dataObj['result'][0]
+                      : dataObj['result']);
             } else {
-              profileJson = Map<String, dynamic>.from(dataObj is List ? dataObj[0] : dataObj);
+              profileJson = Map<String, dynamic>.from(
+                  dataObj is List ? dataObj[0] : dataObj);
             }
-          } else if (decodedBody.containsKey('result') && decodedBody['result'] != null) {
-            profileJson = Map<String, dynamic>.from(decodedBody['result'] is List ? decodedBody['result'][0] : decodedBody['result']);
+          } else if (decodedBody.containsKey('result') &&
+              decodedBody['result'] != null) {
+            profileJson = Map<String, dynamic>.from(
+                decodedBody['result'] is List
+                    ? decodedBody['result'][0]
+                    : decodedBody['result']);
           } else {
-            // ✅ FIXED MAP CASTING HERE
-            profileJson = Map<String, dynamic>.from(decodedBody); 
+            profileJson = Map<String, dynamic>.from(decodedBody);
           }
         }
 
         final profile = Profile.fromJson(profileJson);
+
+        // Cache to Hive
         await _offlineStore.cacheProfile(profile);
+
+        // ← Cache head_of_family to SQLite for future offline scans
+        await RosterSyncService.instance.updateProfileHeadOfFamily(
+          profile.id,
+          profile.headOfFamily,
+        );
+
         return {
           'success': true,
           'data': profile,
@@ -162,6 +180,7 @@ class ProfileService {
         };
       }
 
+      // Non-200/404/401 — try Hive cache
       final cached = _offlineStore.getCachedProfile(profileId);
       if (cached != null) {
         return {
@@ -177,6 +196,7 @@ class ProfileService {
         'message': 'Server Error (${response.statusCode})'
       };
     } catch (e) {
+      // Network error — try Hive cache first
       final cached = _offlineStore.getCachedProfile(profileId);
       if (cached != null) {
         return {
@@ -186,10 +206,11 @@ class ProfileService {
           'message': 'Offline cache hit'
         };
       }
-      
-      // 🚀 NEW: Fallback to Sqflite offline database if Hive cache misses
+
+      // Fallback to SQLite offline roster
       try {
-        final sqliteRow = await RosterSyncService.instance.getProfileLocally(profileId);
+        final sqliteRow =
+            await RosterSyncService.instance.getProfileLocally(profileId);
         if (sqliteRow != null) {
           final profile = Profile.fromJson(sqliteRow);
           return {
@@ -201,7 +222,11 @@ class ProfileService {
         }
       } catch (_) {}
 
-      return {'success': false, 'message': 'Network error: You are offline and this profile is not cached on your device. Please connect to the internet to scan this ID for the first time.'};
+      return {
+        'success': false,
+        'message':
+            'Network error: You are offline and this profile is not cached on your device. Please connect to the internet to scan this ID for the first time.'
+      };
     }
   }
 
@@ -265,7 +290,7 @@ class ProfileService {
   }
 
   // ----------------------------------------------------------------
-  // 5. CHECK IN  🚨 POST /evacuation-center/{centerId}/evacuee
+  // 5. CHECK IN
   // ----------------------------------------------------------------
   Future<Map<String, dynamic>> checkInEvacuee(
       String profileId, String centerId) async {
@@ -289,15 +314,21 @@ class ProfileService {
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         return {'success': true, 'message': 'Check-in Successful'};
-      } else if (response.statusCode == 409 || (response.statusCode == 400 && data?['message']?.toString().toLowerCase().contains('currently checked-in') == true)) {
-        // 🔧 FIX: If the backend says they are already checked in, treat it as a SUCCESS 
-        // so our app can proceed to add them to Supabase and the local active cache.
-        return {'success': true, 'message': 'Check-in Successful (Already checked in on server)'};
+      } else if (response.statusCode == 409 ||
+          (response.statusCode == 400 &&
+              data?['message']
+                      ?.toString()
+                      .toLowerCase()
+                      .contains('currently checked-in') ==
+                  true)) {
+        return {
+          'success': true,
+          'message': 'Check-in Successful (Already checked in on server)'
+        };
       } else if (response.statusCode == 401) {
         return {'success': false, 'message': 'Session expired'};
       }
 
-      // 🔧 Show status code + full message
       return {
         'success': false,
         'message':
@@ -309,16 +340,14 @@ class ProfileService {
   }
 
   // ----------------------------------------------------------------
-  // 6. CHECK OUT  🚨 DELETE /evacuation-evacuee/{EvacueeId}
+  // 6. CHECK OUT
   // ----------------------------------------------------------------
   Future<Map<String, dynamic>> checkOutEvacuee(
       String profileId, String centerId) async {
     try {
-      // Using Lester's simplified global checkout endpoint
-      // We no longer need to pass the centerId to the API!
       final response = await _authenticatedRequest(
         'DELETE',
-        '/evacuation-evacuee/$profileId', 
+        '/evacuation-evacuee/$profileId',
       );
 
       print('📡 Check-out status: ${response.statusCode}');
@@ -331,14 +360,20 @@ class ProfileService {
           response.statusCode == 201 ||
           response.statusCode == 204) {
         return {'success': true, 'message': 'Check-out Successful'};
-      } else if (response.statusCode == 400 && data?['message']?.toString().toLowerCase().contains('not checked-in') == true) {
-        // If the server says they're already checked out, consider it a success to prevent sync blocking
-        return {'success': true, 'message': 'Check-out Successful (Already checked out)'};
+      } else if (response.statusCode == 400 &&
+          data?['message']
+                  ?.toString()
+                  .toLowerCase()
+                  .contains('not checked-in') ==
+              true) {
+        return {
+          'success': true,
+          'message': 'Check-out Successful (Already checked out)'
+        };
       } else if (response.statusCode == 401) {
         return {'success': false, 'message': 'Session expired'};
       }
 
-      // 🔧 Show status code + full API response body so we know exactly what failed
       return {
         'success': false,
         'message':
@@ -350,13 +385,13 @@ class ProfileService {
   }
 
   // ----------------------------------------------------------------
-  // 7. GET CENTERS (Dynamic Pagination - All Centers)
+  // 7. GET CENTERS
   // ----------------------------------------------------------------
   Future<Map<String, dynamic>> getEvacuationCenters() async {
     try {
       List<EvacuationCenter> allCenters = [];
       int currentPage = 1;
-      int rowsPerPage = 50; 
+      int rowsPerPage = 50;
       bool hasMoreData = true;
 
       while (hasMoreData) {
@@ -366,11 +401,10 @@ class ProfileService {
         if (response.statusCode == 200) {
           final decodedBody = jsonDecode(response.body);
           print('✅ RAW CENTERS RESPONSE: ${response.body}');
-          
+
           List dynamicList = [];
-          
+
           if (decodedBody is Map) {
-            // Check common response wrappers
             if (decodedBody['data'] != null) {
               final d = decodedBody['data'];
               if (d is List) {
@@ -392,22 +426,21 @@ class ProfileService {
           if (dynamicList.isEmpty) {
             hasMoreData = false;
           } else {
-            // Parse the current page's centers
-            final pageCenters = dynamicList.map((e) => EvacuationCenter.fromJson(e)).toList();
-            
-            // Add ALL centers directly to the master list (no filter applied)
+            final pageCenters =
+                dynamicList.map((e) => EvacuationCenter.fromJson(e)).toList();
             allCenters.addAll(pageCenters);
 
             if (dynamicList.length < rowsPerPage) {
-              hasMoreData = false; // Reached the last page
+              hasMoreData = false;
             } else {
-              currentPage++; // Move to next page
+              currentPage++;
             }
           }
         } else {
           return {
             'success': false,
-            'message': 'API Error on page $currentPage: ${response.statusCode}'
+            'message':
+                'API Error on page $currentPage: ${response.statusCode}'
           };
         }
       }
@@ -427,5 +460,4 @@ class ProfileService {
       return {'success': false, 'message': 'Error parsing centers: $e'};
     }
   }
-
 }
