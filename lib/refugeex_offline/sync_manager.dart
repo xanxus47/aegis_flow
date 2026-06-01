@@ -79,31 +79,42 @@ class SyncManager {
     _emit(_state.copyWith(isSyncing: true));
 
     final actions = _store.getQueuedActions();
+
+    // Group actions by profileId to preserve per-person order (check-in before check-out)
+    final Map<String, List<OfflineQueueAction>> byProfile = {};
     for (final action in actions) {
-      await _store.markActionStatus(action.id, QueueActionStatus.syncing);
-      try {
-        switch (action.type) {
-          case QueueActionType.checkIn:
-            await _processCheckIn(action);
-            break;
-          case QueueActionType.checkOut:
-            await _processCheckOut(action);
-            break;
-        }
-        await _store.markActionStatus(action.id, QueueActionStatus.synced);
-        await _store.deleteAction(action.id);
-        _emit(_state.copyWith(
-          lastMessage: 'Last sync succeeded',
-          lastSuccess: DateTime.now(),
-        ));
-      } catch (e) {
-        await _store.markActionStatus(action.id, QueueActionStatus.failed,
-            error: e.toString());
-        _emit(_state.copyWith(
-          lastMessage: 'Sync error: $e',
-        ));
-      }
+      final key = (action.payload['profileId'] as String?) ?? action.id;
+      byProfile.putIfAbsent(key, () => []).add(action);
     }
+
+    // Process all profiles in parallel; each profile's actions run sequentially
+    await Future.wait(byProfile.values.map((profileActions) async {
+      for (final action in profileActions) {
+        await _store.markActionStatus(action.id, QueueActionStatus.syncing);
+        try {
+          switch (action.type) {
+            case QueueActionType.checkIn:
+              await _processCheckIn(action);
+              break;
+            case QueueActionType.checkOut:
+              await _processCheckOut(action);
+              break;
+          }
+          await _store.markActionStatus(action.id, QueueActionStatus.synced);
+          await _store.deleteAction(action.id);
+          _emit(_state.copyWith(
+            lastMessage: 'Last sync succeeded',
+            lastSuccess: DateTime.now(),
+          ));
+        } catch (e) {
+          await _store.markActionStatus(action.id, QueueActionStatus.failed,
+              error: e.toString());
+          _emit(_state.copyWith(
+            lastMessage: 'Sync error: $e',
+          ));
+        }
+      }
+    }));
 
     _isProcessing = false;
     _emit(_state.copyWith(isSyncing: false));
