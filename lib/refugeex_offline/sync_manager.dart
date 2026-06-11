@@ -162,6 +162,8 @@ class SyncManager {
       barangay: payload['barangay']?.toString(),
       household: payload['household']?.toString(),
       headOfFamily: payload['headOfFamily']?.toString(),
+      birthDate: payload['birthDate']?.toString(),
+      sitio: payload['sitio']?.toString(),
       proofImage: proofUrl,
       isPregnant: payload['isPregnant'] == true,
       isLactating: payload['isLactating'] == true,

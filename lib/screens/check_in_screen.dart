@@ -695,6 +695,8 @@ class _CheckInScreenState extends State<CheckInScreen> {
         barangay: profile.barangay,
         household: profile.household,
         headOfFamily: profile.headOfFamily,          // 👈 ADDED THIS LINE
+        birthDate: profile.birthDate,
+        sitio: profile.sitio,
         proofImage: proofUrl,
         isPregnant: vulnerabilities.contains('Pregnant'),
         isLactating: vulnerabilities.contains('Lactating Mother'),
@@ -795,6 +797,8 @@ class _CheckInScreenState extends State<CheckInScreen> {
       'barangay': profile.barangay,
       'household': profile.household,
       'headOfFamily': profile.headOfFamily,
+      'birthDate': profile.birthDate,
+      'sitio': profile.sitio,
       'proofUrl': proofUrl,
       'proofPath': proofPath,
       'proofFileName': proofFileName,

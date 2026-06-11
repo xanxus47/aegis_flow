@@ -62,6 +62,8 @@ class SupabaseService {
     String? proofImage,
     String? household,
     String? headOfFamily,             // 👈 NEW FIELD
+    String? birthDate,                // 👈 NEW FIELD
+    String? sitio,                    // 👈 NEW FIELD
 
     // Vulnerabilities
     required bool isPregnant,
@@ -115,8 +117,10 @@ class SupabaseService {
         'age': int.tryParse(age ?? '0'),
         'sex': sex,
         'barangay': barangay,               // ← evacuee's home barangay (kept for reference)
+        'sitio': sitio,
         'household': household,
         'head_of_family': headOfFamily,     // 👈 ADDED TO INSERT
+        'birth_date': birthDate,
         'proof_image': proofImage,
 
         // Vulnerabilities

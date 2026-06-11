@@ -43,6 +43,7 @@ class Profile {
   final DateTime? dateAdded;
   final DateTime? dateModified;
   final String? headOfFamily;
+  final String? birthDate;
 
   Profile({
     required this.id,
@@ -87,6 +88,7 @@ class Profile {
     this.dateAdded,
     this.dateModified,
     this.headOfFamily,
+    this.birthDate,
   });
 
   factory Profile.fromJson(Map<String, dynamic> json) {
@@ -233,6 +235,7 @@ parsedHead ??= _getString('headOfFamily')
       dateAdded: _getDateTime('dateAdded') ?? _getDateTime('date_added'),
       dateModified: _getDateTime('dateModified') ?? _getDateTime('date_modified'),
       headOfFamily: parsedHead,
+      birthDate: _getString('birthDate') ?? _getString('birthdate'),
     );
   }
 
@@ -296,6 +299,7 @@ parsedHead ??= _getString('headOfFamily')
       'dateAdded': dateAdded?.toIso8601String(),
       'dateModified': dateModified?.toIso8601String(),
       'headOfFamily': headOfFamily,
+      'birthDate': birthDate,
     };
   }
 
