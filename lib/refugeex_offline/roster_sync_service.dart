@@ -111,7 +111,7 @@ class RosterSyncService {
           'type': 'execute',
           'stmt': {
             'sql':
-                'SELECT id, name, sex, gender, barangay, "sitio/proper", "purok/street", birthdate, civilstatus, householdid, familyid FROM population'
+                'SELECT id, name, sex, gender, barangay, "sitio/proper", "purok/street", birthdate, civilstatus, householdid, familyid, relationshiptofamilyhead FROM population'
           }
         },
         {'type': 'close'}
@@ -143,6 +143,24 @@ class RosterSyncService {
 
     print('✅ Turso returned ${tursoRows.length} profiles, writing to SQLite...');
 
+    // 1. Build a map of familyId -> Family Head Name
+    final Map<String, String> familyHeads = {};
+    for (var row in tursoRows) {
+      final familyIdCol = row[10];
+      final relCol = row[11];
+      
+      final familyId = familyIdCol['type'] == 'null' ? null : familyIdCol['value']?.toString();
+      final relation = relCol['type'] == 'null' ? null : relCol['value']?.toString();
+      
+      if (familyId != null && relation?.toLowerCase() == 'family head') {
+        final nameCol = row[1];
+        final name = nameCol['type'] == 'null' ? null : nameCol['value']?.toString();
+        if (name != null) {
+          familyHeads[familyId] = name;
+        }
+      }
+    }
+
     final db = await database;
     final batch = db.batch();
     batch.delete('profiles');
@@ -153,6 +171,9 @@ class RosterSyncService {
         if (col['type'] == 'null') return null;
         return col['value']?.toString();
       }
+
+      final fId = val(10);
+      final headName = fId != null ? familyHeads[fId] : null;
 
       batch.insert(
         'profiles',
@@ -167,8 +188,8 @@ class RosterSyncService {
           'birthdate':      val(7),
           'civil_status':   val(8),
           'household_id':   val(9),
-          'family_id':      val(10),
-          'head_of_family': null, // populated on first online scan
+          'family_id':      fId,
+          'head_of_family': headName,
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );

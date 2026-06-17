@@ -192,6 +192,22 @@ parsedHead ??= _getString('headOfFamily')
     }
     parsedBarangay ??= _getString('barangay') ?? _getString('barangayName');
 
+    String? parsedSitio;
+    if (json['address'] is Map && json['address']['sitio'] is Map) {
+      parsedSitio = json['address']['sitio']['name']?.toString();
+    } else if (json['sitio'] is Map) {
+      parsedSitio = json['sitio']['name']?.toString();
+    }
+    parsedSitio ??= _getString('sitio');
+
+    String? parsedPurok;
+    if (json['address'] is Map && json['address']['purok'] is Map) {
+      parsedPurok = json['address']['purok']['name']?.toString();
+    } else if (json['purok'] is Map) {
+      parsedPurok = json['purok']['name']?.toString();
+    }
+    parsedPurok ??= _getString('purok');
+
     return Profile(
       id: _getString('id') ?? '',
       firstName: _getString('firstName') ?? _getString('first_name') ?? 'Unknown',
@@ -203,8 +219,8 @@ parsedHead ??= _getString('headOfFamily')
       gender: _getString('gender'),
       civilStatus: _getString('civilStatus') ?? _getString('civil_status'),
       barangay: parsedBarangay,
-      sitio: json['address'] is Map ? json['address']['sitio']?.toString() : _getString('sitio'),
-      purok: json['address'] is Map ? json['address']['purok']?.toString() : _getString('purok'),
+      sitio: parsedSitio,
+      purok: parsedPurok,
       household: _getString('household') ?? _getString('householdId') ?? _getString('household_id'),
       family: _getString('family') ?? _getString('familyId') ?? _getString('family_id'),
       isHouseholdHead: _getBool('isHouseholdHead') ?? _getBool('is_household_head'),
