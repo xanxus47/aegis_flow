@@ -5,6 +5,8 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'check_in_screen.dart';
 import 'check_out_screen.dart';
 import '../refugeex_offline/roster_sync_service.dart';
+import '../refugeex_offline/sync_manager.dart';
+import '../refugeex_offline/sync_state.dart';
 
 class HomeScreen extends StatefulWidget {
   final String? userName;
@@ -26,12 +28,16 @@ class _HomeScreenState extends State<HomeScreen> {
   final Color _checkOutColor = const Color(0xFFF59E0B);
 
   StreamSubscription? _connectivitySub;
+  StreamSubscription<SyncState>? _syncSub;
   bool _isDownloading = false;
+  bool _wasSyncing = false;
 
   @override
   void initState() {
     super.initState();
     _tryAutoDownload();
+    
+    // Listen for roster downloads
     _connectivitySub = Connectivity().onConnectivityChanged.listen((results) async {
       final bool online = results.any((r) => r != ConnectivityResult.none);
       if (online && !_isDownloading) {
@@ -39,11 +45,51 @@ class _HomeScreenState extends State<HomeScreen> {
         if (count == 0) await _downloadRoster();
       }
     });
+
+    // Listen for offline queue sync (check-ins / check-outs)
+    _syncSub = SyncManager.instance.stateStream.listen((state) {
+      if (!mounted) return;
+      
+      // If it was syncing and now it finished
+      if (_wasSyncing && !state.isSyncing) {
+        if (state.pendingActions == 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.cloud_done_rounded, color: Colors.white),
+                  SizedBox(width: 8),
+                  Text('All offline records synced successfully!'),
+                ],
+              ),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 4),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.cloud_off_rounded, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text('Sync paused. ${state.pendingActions} records still pending.')),
+                ],
+              ),
+              backgroundColor: Colors.orange.shade700,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+      }
+      _wasSyncing = state.isSyncing;
+    });
   }
 
   @override
   void dispose() {
     _connectivitySub?.cancel();
+    _syncSub?.cancel();
     super.dispose();
   }
 
@@ -236,10 +282,113 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildDrawer(BuildContext context) {
+    return Drawer(
+      backgroundColor: Colors.white,
+      child: Column(
+        children: [
+          DrawerHeader(
+            decoration: BoxDecoration(
+              color: _primaryColor,
+            ),
+            child: SizedBox(
+              width: double.infinity,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Image.asset(
+                    'assets/vitality.png',
+                    width: 56,
+                    height: 56,
+                    fit: BoxFit.contain,
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'RefugeeX',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Text(
+                    'Developed By: Argerin R. Quijano',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          ListTile(
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: _checkInColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.login_rounded, color: _checkInColor, size: 20),
+            ),
+            title: const Text('Check In', style: TextStyle(fontWeight: FontWeight.w600)),
+            onTap: () {
+              Navigator.pop(context);
+              _navigateToCheckIn(context);
+            },
+          ),
+          ListTile(
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: _checkOutColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.logout_rounded, color: _checkOutColor, size: 20),
+            ),
+            title: const Text('Check Out', style: TextStyle(fontWeight: FontWeight.w600)),
+            onTap: () {
+              Navigator.pop(context);
+              _navigateToCheckOut(context);
+            },
+          ),
+          const Spacer(),
+          const Divider(height: 1),
+          ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.power_settings_new_rounded, color: Colors.red.shade400, size: 20),
+            ),
+            title: Text(
+              'Logout',
+              style: TextStyle(
+                color: Colors.red.shade600,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+            onTap: () {
+              Navigator.pop(context);
+              _showLogoutConfirmation(context);
+            },
+          ),
+          SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC), 
+      drawer: _buildDrawer(context),
       body: SafeArea(
         child: ListView(
           // Adjusted padding to standard margins now that the bottom nav is gone
@@ -249,45 +398,36 @@ class _HomeScreenState extends State<HomeScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.security_rounded, color: _primaryColor, size: 20),
-                        const SizedBox(width: 8),
-                        Text(
-                          'MDRRMO', 
-                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.blueGrey.shade500, letterSpacing: 1.5)
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Dashboard', 
-                      style: TextStyle(fontSize: 32, fontWeight: FontWeight.w800, color: Colors.blueGrey.shade900)
-                    ),
-                  ],
-                ),
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(color: Colors.blueGrey.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 4)),
-                    ]
-                  ),
-                  child: IconButton(
-                    onPressed: () => _showLogoutConfirmation(context),
-                    icon: _isDownloading
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                        : Icon(Icons.power_settings_new_rounded, color: Colors.blueGrey.shade700),
-                  ),
+                Builder(
+                  builder: (context) {
+                    return Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(color: Colors.blueGrey.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 4)),
+                        ]
+                      ),
+                      child: IconButton(
+                        onPressed: () => Scaffold.of(context).openDrawer(),
+                        icon: _isDownloading
+                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                            : Icon(Icons.menu_rounded, color: Colors.blueGrey.shade700),
+                      ),
+                    );
+                  }
                 ),
               ],
             ),
             
-            const SizedBox(height: 40), 
+            const SizedBox(height: 20), 
+
+            Text(
+              'Dashboard', 
+              style: TextStyle(fontSize: 32, fontWeight: FontWeight.w800, color: Colors.blueGrey.shade900)
+            ),
+            
+            const SizedBox(height: 16),
 
             Text(
               'QUICK ACTIONS', 
@@ -311,6 +451,7 @@ class _HomeScreenState extends State<HomeScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: _primaryColor.withOpacity(0.5), width: 1.5),
         boxShadow: [
           BoxShadow(
             color: Colors.blueGrey.withOpacity(0.05),

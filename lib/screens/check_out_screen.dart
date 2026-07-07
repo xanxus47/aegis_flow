@@ -21,6 +21,7 @@ class CheckOutScreen extends StatefulWidget {
 class _CheckOutScreenState extends State<CheckOutScreen> {
   MobileScannerController? _controller;
   bool _isProcessing = false;
+  bool _isTorchOn = false;
 
   final ProfileService _profileService = ProfileService();
   final SupabaseService _supabaseService = SupabaseService();
@@ -39,6 +40,11 @@ class _CheckOutScreenState extends State<CheckOutScreen> {
       facing: CameraFacing.back,
       torchEnabled: false,
     );
+  }
+
+  void _toggleFlash() {
+    _controller?.toggleTorch();
+    setState(() => _isTorchOn = !_isTorchOn);
   }
 
   void _handleScan(String rawData) async {
@@ -359,8 +365,12 @@ class _CheckOutScreenState extends State<CheckOutScreen> {
         elevation: 0,
         actions: [
           IconButton(
-              icon: const Icon(Icons.flash_on, color: Colors.white),
-              onPressed: () => _controller?.toggleTorch()),
+            icon: Icon(
+              _isTorchOn ? Icons.flash_on : Icons.flash_off,
+              color: _isTorchOn ? Colors.amber : Colors.white,
+            ),
+            onPressed: _toggleFlash,
+          ),
         ],
       ),
       body: Stack(

@@ -458,24 +458,70 @@ class _CheckInScreenState extends State<CheckInScreen> {
                   Text("Vulnerabilities:",
                       style:
                           TextStyle(color: Colors.grey[600], fontSize: 13)),
-                  ..._vulnerabilityOptions.map((option) {
-                    final isChecked = selectedOptions.contains(option);
-                    return CheckboxListTile(
-                      title: Text(option),
-                      value: isChecked,
-                      dense: true,
-                      activeColor: _primaryColor,
-                      onChanged: (bool? val) {
-                        setDialogState(() {
-                          if (val == true) {
-                            selectedOptions.add(option);
-                          } else {
-                            selectedOptions.remove(option);
-                          }
-                        });
-                      },
-                    );
-                  }),
+                  const SizedBox(height: 8),
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 8,
+                      mainAxisSpacing: 4,
+                      mainAxisExtent: 40,
+                    ),
+                    itemCount: _vulnerabilityOptions.length,
+                    itemBuilder: (context, index) {
+                      final option = _vulnerabilityOptions[index];
+                      final isChecked = selectedOptions.contains(option);
+                      return InkWell(
+                        onTap: () {
+                          setDialogState(() {
+                            if (isChecked) {
+                              selectedOptions.remove(option);
+                            } else {
+                              selectedOptions.add(option);
+                            }
+                          });
+                        },
+                        borderRadius: BorderRadius.circular(6),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: Checkbox(
+                                value: isChecked,
+                                activeColor: _primaryColor,
+                                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                onChanged: (bool? val) {
+                                  setDialogState(() {
+                                    if (val == true) {
+                                      selectedOptions.add(option);
+                                    } else {
+                                      selectedOptions.remove(option);
+                                    }
+                                  });
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                option,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey[800],
+                                  height: 1.1,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
                 ],
               ),
             ),
