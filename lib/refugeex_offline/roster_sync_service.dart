@@ -103,10 +103,10 @@ class RosterSyncService {
 
     // Connection configuration for NeonDB
     final endpoint = Endpoint(
-      host: 'ep-withered-tooth-aolkq3ma-pooler.c-2.ap-southeast-1.aws.neon.tech',
+      host: 'ep-rough-sun-az4sdeoc-pooler.c-3.ap-southeast-1.aws.neon.tech',
       database: 'neondb',
       username: 'neondb_owner',
-      password: 'npg_N7cTtaiUDW6O',
+      password: 'npg_FEt8n9levwgy',
       port: 5432,
     );
 
@@ -118,7 +118,7 @@ class RosterSyncService {
       );
 
       final result = await conn.execute(
-        'SELECT id, name, sex, gender, barangay, "sitio/proper", "purok/street", birthdate, civilstatus, householdid, familyid, relationshiptofamilyhead FROM population'
+        'SELECT id, name, sex, gender, barangay, "sitio/proper", "purok/street", birthdate, "civilStatus", "householdId", "familyId", "relationshipToFamilyHead" FROM population'
       );
 
       print('✅ PostgreSQL returned \${result.length} profiles, writing to SQLite...');

@@ -89,20 +89,63 @@ class SupabaseService {
   }) async {
     try {
       // Check if already actively checked in to prevent duplicate rows
-      final existingRecord = await _supabase
+      final existingRecords = await _supabase
           .from('evacuee_details')
-          .select('id')
+          .select('id, is_checked_in')
           .eq('profile_id', profileId)
-          .eq('is_checked_in', true)
-          .maybeSingle();
+          .limit(1);
 
-      if (existingRecord != null) {
-        print('⚠️ Evacuee $profileId is already checked in. Skipping Supabase insert to prevent duplicates.');
-        return;
-      }
+      if (existingRecords.isNotEmpty) {
+        final record = existingRecords.first;
+        if (record['is_checked_in'] == true) {
+          print('⚠️ Evacuee $profileId is already checked in. Skipping Supabase insert to prevent duplicates.');
+          return;
+        } else {
+          // The person was checked out previously. 
+          // Update their existing record to checked in instead of creating a duplicate row!
+          final String resolvedCheckInTime =
+              (checkInTimestamp ?? DateTime.now()).toUtc().toIso8601String();
 
-      if (household != null && household.isNotEmpty) {
-        await _ensureFamilyExists(household, barangay);
+          await _supabase.from('evacuee_details').update({
+            'evacuation_center_id': evacuationCenterId,
+            'evacuation_center_name': evacuationCenterName,
+            'center_barangay': centerBarangay,
+            'age': int.tryParse(age ?? '0'),
+            'sex': sex,
+            'barangay': barangay,
+            'sitio': sitio,
+            'household': household,
+            'head_of_family': headOfFamily,
+            'birth_date': birthDate,
+            'proof_image': proofImage,
+            'is_pregnant': isPregnant,
+            'is_lactating': isLactating,
+            'is_child_headed': isChildHeaded,
+            'is_single_headed': isSingleHeaded,
+            'is_solo_parent': isSoloParent,
+            'is_pwd': isPwd,
+            'is_ip': isIp,
+            'is_4ps': is4Ps,
+            'is_lgbt': isLgbt,
+            'is_outside_ec': isOutsideEc,
+            'host_address': hostAddress,
+            'latitude': latitude,
+            'longitude': longitude,
+            'check_in_time': resolvedCheckInTime,
+            'is_checked_in': true,
+          }).eq('id', record['id']);
+
+          await _updateStats(
+            centerId: evacuationCenterId,
+            centerName: evacuationCenterName,
+            barangay: barangay,
+            activeEvacueesDelta: 1,
+            totalCheckinsDelta: 1,
+          );
+
+          print('✅ Check-in updated (re-admitted): $fullName');
+          return;
+        }
       }
 
       final String resolvedCheckInTime =
@@ -167,17 +210,19 @@ class SupabaseService {
   // ----------------------------------------------------------------
   Future<void> trackEvacueeCheckOut({required String profileId}) async {
     try {
-      final record = await _supabase
+      final records = await _supabase
           .from('evacuee_details')
           .select()
           .eq('profile_id', profileId)
           .eq('is_checked_in', true)
-          .maybeSingle();
+          .limit(1);
 
-      if (record == null) {
+      if (records.isEmpty) {
         print('⚠️ No active check-in record found for $profileId');
         return;
       }
+      
+      final record = records.first;
 
       await _supabase
           .from('evacuee_details')

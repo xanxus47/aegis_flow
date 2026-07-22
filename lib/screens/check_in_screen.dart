@@ -201,6 +201,45 @@ class _CheckInScreenState extends State<CheckInScreen> {
   // ----------------------------------------------------------------
   // SCAN HANDLER
   // ----------------------------------------------------------------
+  Future<Map<String, dynamic>?> _getActiveCheckInRecord(String profileId) async {
+    final hasNetwork =
+        (await _connectivity.checkConnectivity()) != ConnectivityResult.none;
+    if (hasNetwork) {
+      try {
+        final List<dynamic> checkInRecord = await Supabase.instance.client
+            .from('evacuee_details')
+            .select()
+            .eq('profile_id', profileId)
+            .eq('is_checked_in', true)
+            .limit(1);
+
+        if (checkInRecord.isNotEmpty) {
+          final record = Map<String, dynamic>.from(checkInRecord.first);
+          await _offlineStore.upsertActiveCheckIn({
+            'profileId': profileId,
+            'fullName': record['full_name'] ?? 'Unknown',
+            'centerId': record['evacuation_center_id']?.toString(),
+            'centerName': record['evacuation_center_name']?.toString(),
+            'centerBarangay': record['center_barangay']?.toString(),
+            'timestamp': DateTime.now().toIso8601String(),
+            'synced': true,
+          });
+          return {
+            'fullName': record['full_name'],
+            'centerId': record['evacuation_center_id'],
+            'centerName': record['evacuation_center_name'],
+          };
+        }
+        // If not found in DB but network is active, it means they are NOT checked in.
+        return null;
+      } catch (e) {
+        debugPrint('Live lookup failed, falling back to cache: $e');
+      }
+    }
+
+    return _offlineStore.getActiveCheckIn(profileId);
+  }
+
   void _handleScan(String rawData) async {
     if (_isProcessing || _selectedCenter == null) return;
 
@@ -215,6 +254,13 @@ class _CheckInScreenState extends State<CheckInScreen> {
     try {
       final id = _profileService.extractProfileId(rawData);
       if (id == null) throw "Invalid QR Code format";
+
+      // PRE-CHECK: Prevent checking in someone who is already checked in.
+      final existingRecord = await _getActiveCheckInRecord(id);
+      if (existingRecord != null) {
+        final centerName = existingRecord['centerName'] ?? 'an evacuation center';
+        throw "This person is currently checked in at $centerName.\n\nThey must be checked out first before they can check in again.";
+      }
 
       final profileRes = await _profileService.getProfileDetails(id);
 
