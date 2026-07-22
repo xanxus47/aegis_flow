@@ -52,6 +52,7 @@ dependencies:
   json_path: ^0.9.0
   sqflite: ^2.4.2+1
   path: ^1.9.1
+  postgres: ^3.5.12
 
 
 dev_dependencies:

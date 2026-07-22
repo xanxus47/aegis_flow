@@ -1,7 +1,6 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import 'package:postgres/postgres.dart';
 
 class RosterSyncService {
   static final RosterSyncService instance = RosterSyncService._internal();
@@ -98,105 +97,85 @@ class RosterSyncService {
     return null;
   }
 
-  /// Fast sync — uses Turso only. head_of_family populated on first online scan.
+  /// Fast sync — uses PostgreSQL (NeonDB). head_of_family populated on first online scan.
   Future<void> downloadAndSyncRoster() async {
-    const tursoUrl =
-        'https://population-xanxus.aws-ap-northeast-1.turso.io/v2/pipeline';
-    const tursoToken =
-        'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NzY5MTA0NTEsImlkIjoiMDE5ZGI3ZDMtNDIwMS03YWE2LWI0YzMtNDM0YjM1YzM5NTgyIiwicmlkIjoiZmJiMjM3OGMtODYzYy00NDQ0LWE1MWYtZDY2ZjNhNzcwZjVjIn0._NIcHRV5GdKayhavl-EQYCv96-nqlyxk-EmrpBYYmmA9782rSMfh--5LIAgINpUDd4FzCZBwZ93pA_n76cgOCg';
+    print('📥 Fetching roster from PostgreSQL (NeonDB)...');
 
-    final payload = {
-      'requests': [
-        {
-          'type': 'execute',
-          'stmt': {
-            'sql':
-                'SELECT id, name, sex, gender, barangay, "sitio/proper", "purok/street", birthdate, civilstatus, householdid, familyid, relationshiptofamilyhead FROM population'
+    // Connection configuration for NeonDB
+    final endpoint = Endpoint(
+      host: 'ep-withered-tooth-aolkq3ma-pooler.c-2.ap-southeast-1.aws.neon.tech',
+      database: 'neondb',
+      username: 'neondb_owner',
+      password: 'npg_N7cTtaiUDW6O',
+      port: 5432,
+    );
+
+    Connection? conn;
+    try {
+      conn = await Connection.open(
+        endpoint,
+        settings: const ConnectionSettings(sslMode: SslMode.require),
+      );
+
+      final result = await conn.execute(
+        'SELECT id, name, sex, gender, barangay, "sitio/proper", "purok/street", birthdate, civilstatus, householdid, familyid, relationshiptofamilyhead FROM population'
+      );
+
+      print('✅ PostgreSQL returned \${result.length} profiles, writing to SQLite...');
+
+      // 1. Build a map of familyId -> Family Head Name
+      final Map<String, String> familyHeads = {};
+      for (final row in result) {
+        final familyId = row[10]?.toString();
+        final relation = row[11]?.toString();
+        
+        if (familyId != null && relation?.toLowerCase() == 'family head') {
+          final name = row[1]?.toString();
+          if (name != null) {
+            familyHeads[familyId] = name;
           }
-        },
-        {'type': 'close'}
-      ]
-    };
-
-    print('📥 Fetching roster from Turso...');
-
-    final tursoResponse = await http
-        .post(
-          Uri.parse(tursoUrl),
-          headers: {
-            'Authorization': 'Bearer $tursoToken',
-            'Content-Type': 'application/json',
-          },
-          body: jsonEncode(payload),
-        )
-        .timeout(const Duration(seconds: 60));
-
-    if (tursoResponse.statusCode != 200) {
-      throw Exception(
-          'Failed to download roster from Turso: ${tursoResponse.body}');
-    }
-
-    final tursoData = jsonDecode(tursoResponse.body);
-    final results = tursoData['results'] as List;
-    final executeResult = results[0]['response']['result'];
-    final tursoRows = executeResult['rows'] as List;
-
-    print('✅ Turso returned ${tursoRows.length} profiles, writing to SQLite...');
-
-    // 1. Build a map of familyId -> Family Head Name
-    final Map<String, String> familyHeads = {};
-    for (var row in tursoRows) {
-      final familyIdCol = row[10];
-      final relCol = row[11];
-      
-      final familyId = familyIdCol['type'] == 'null' ? null : familyIdCol['value']?.toString();
-      final relation = relCol['type'] == 'null' ? null : relCol['value']?.toString();
-      
-      if (familyId != null && relation?.toLowerCase() == 'family head') {
-        final nameCol = row[1];
-        final name = nameCol['type'] == 'null' ? null : nameCol['value']?.toString();
-        if (name != null) {
-          familyHeads[familyId] = name;
         }
       }
-    }
 
-    final db = await database;
-    final batch = db.batch();
-    batch.delete('profiles');
+      final db = await database;
+      final batch = db.batch();
+      batch.delete('profiles');
 
-    for (var row in tursoRows) {
-      String? val(int index) {
-        final col = row[index];
-        if (col['type'] == 'null') return null;
-        return col['value']?.toString();
+      for (final row in result) {
+        String? val(int index) {
+          return row[index]?.toString();
+        }
+
+        final fId = val(10);
+        final headName = fId != null ? familyHeads[fId] : null;
+
+        batch.insert(
+          'profiles',
+          {
+            'id':             val(0),
+            'full_name':      val(1),
+            'sex':            val(2),
+            'gender':         val(3),
+            'barangay':       val(4),
+            'sitio':          val(5),
+            'purok':          val(6),
+            'birthdate':      val(7),
+            'civil_status':   val(8),
+            'household_id':   val(9),
+            'family_id':      fId,
+            'head_of_family': headName,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
       }
 
-      final fId = val(10);
-      final headName = fId != null ? familyHeads[fId] : null;
-
-      batch.insert(
-        'profiles',
-        {
-          'id':             val(0),
-          'full_name':      val(1),
-          'sex':            val(2),
-          'gender':         val(3),
-          'barangay':       val(4),
-          'sitio':          val(5),
-          'purok':          val(6),
-          'birthdate':      val(7),
-          'civil_status':   val(8),
-          'household_id':   val(9),
-          'family_id':      fId,
-          'head_of_family': headName,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      await batch.commit(noResult: true);
+      print('✅ Roster sync complete: ${result.length} profiles saved offline');
+    } catch (e) {
+      throw Exception('Failed to download roster from PostgreSQL: $e');
+    } finally {
+      await conn?.close();
     }
-
-    await batch.commit(noResult: true);
-    print('✅ Roster sync complete: ${tursoRows.length} profiles saved offline');
   }
 
   /// Called after a successful online scan to cache head_of_family into SQLite.
