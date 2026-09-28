@@ -40,7 +40,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Refugeex',
+      title: 'MGY IDP-IMS',
       theme: ThemeData(
         // Modern Theme Configuration
         primarySwatch: Colors.blue,
